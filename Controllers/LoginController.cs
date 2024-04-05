@@ -1,0 +1,391 @@
+﻿using DydaktykaBackend.Models;
+using lojalBackend.DbContexts.MainContext;
+using lojalBackend.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace lojalBackend.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class LoginController : ControllerBase
+    {
+        private readonly ILogger<LoginController> _logger;
+        private readonly IConfiguration _configuration;
+        private readonly string? ConnStr;
+
+        public LoginController(ILogger<LoginController> logger, IConfiguration configuration)
+        {
+            _logger = logger;
+            _configuration = configuration;
+            ConnStr = configuration.GetConnectionString("MainConn");
+        }
+        /// <summary>
+        /// Logs in a given user
+        /// </summary>
+        /// <param name="user">Object with user login and password</param>
+        [AllowAnonymous]
+        [HttpPost("Login")]
+        public async Task<IActionResult> Login([FromBody] LoginModel user)
+        {
+            IActionResult response = Unauthorized();
+            var authenticatedUser = await AuthenticateUser(user);
+
+            if (authenticatedUser != null)
+            {
+                var tokenString = GenerateJSONWebToken(authenticatedUser);
+                var refreshToken = GenerateRefreshToken();
+
+                using (LojClientDbContext db = new(ConnStr))
+                {
+                    var transaction = await db.Database.BeginTransactionAsync();
+                    try
+                    {
+                        RefreshToken? entry = await db.RefreshTokens.FirstOrDefaultAsync(x => user.Username.Equals(x.Login));
+                        if(entry != null)
+                        {
+                            entry.Token = refreshToken;
+                            entry.Expiry = DateTime.Now.AddDays(1);
+                            db.Update(entry);
+                            await db.SaveChangesAsync();
+                        }
+                    }
+                    catch
+                    {
+                        transaction.Rollback();
+                        throw;
+                    }
+                    transaction.Commit();
+                }
+
+                response = Ok(new TokenModel(tokenString, refreshToken));
+            }
+
+            return response;
+        }
+        /// <summary>
+        /// Registers new user
+        /// </summary>
+        /// <param name="user">Object with user data</param>
+        [AllowAnonymous]
+        [HttpPost("Register")]
+        public async Task<IActionResult> Register([FromBody] UserModel user)
+        {
+            if (user.AccountType is null)
+                return BadRequest("Type of an account was not supplied!");
+            if (user.AccountType is AccountTypes.Administrator)
+                return BadRequest("You cannot register an Administrator account!");
+            if (!user.IsPassword())
+                return BadRequest("Password was not supplied!");
+            if (string.IsNullOrEmpty(user.Username))
+                return BadRequest("Username was not supplied!");
+            if (string.IsNullOrEmpty(user.Email))
+                return BadRequest("Email was not supplied");
+
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? dbUser = await db.Users.FindAsync(user.Username);
+                if(dbUser != null)
+                    return BadRequest("Username is taken!");
+
+                byte[] salt = user.EncryptPassword();
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    User newUser = new()
+                    {
+                        Login = user.Username,
+                        Password = user.Password,
+                        Email = user.Email,
+                        Type = user.ConvertFromEnum(),
+                        Organization = user.OrganizationName,
+                        Salt = Convert.ToHexString(salt)
+                    };
+                    db.Users.Add(newUser);
+
+                    RefreshToken token = new()
+                    {
+                        Login = user.Username
+                    };
+                    db.RefreshTokens.Add(token);
+                    await db.SaveChangesAsync();
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            return Ok("User successfully added!");
+        }
+        /// <summary>
+        /// Registers new user (with administrator privileges)
+        /// </summary>
+        /// <param name="user">Object with user data</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPost("RegisterForAdmin")]
+        public async Task<IActionResult> RegisterForAdmin([FromBody] UserModel user)
+        {
+            if (!user.IsPassword())
+                return BadRequest("Password was not supplied!");
+            if (string.IsNullOrEmpty(user.Username))
+                return BadRequest("Username was not supplied!");
+            if (user.AccountType is null)
+                return BadRequest("Type of an account was not supplied!");
+            if (string.IsNullOrEmpty(user.Email))
+                return BadRequest("Email was not supplied");
+
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? dbUser = await db.Users.FindAsync(user.Username);
+                if (dbUser != null)
+                    return BadRequest("Username is taken!");
+
+                byte[] salt = user.EncryptPassword();
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    User newUser = new()
+                    {
+                        Login = user.Username,
+                        Password = user.Password,
+                        Email = user.Email,
+                        Type = user.ConvertFromEnum(),
+                        Organization = user.OrganizationName,
+                        Salt = Convert.ToHexString(salt)
+                    };
+                    db.Users.Add(newUser);
+
+                    RefreshToken token = new()
+                    {
+                        Login = user.Username
+                    };
+                    db.RefreshTokens.Add(token);
+
+                    await db.SaveChangesAsync();
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            return Ok("User successfully added!");
+        }
+        /// <summary>
+        /// Logs out the current user
+        /// </summary>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("Logout")]
+        public async Task<IActionResult> Logout()
+        {
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"));
+
+                if (login == null)
+                    return Unauthorized("User does not have name identifier claim!");
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    RefreshToken? token = await db.RefreshTokens.FirstOrDefaultAsync(x => login.Value.Equals(x.Login));
+                    if (token != null)
+                    {
+                        token.Token = null;
+                        token.Expiry = null;
+                        db.Update(token);
+                        await db.SaveChangesAsync();
+                    }
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+
+            return Ok("Account logged out.");
+        }
+        /// <summary>
+        /// Refreshes active JWT tokens
+        /// </summary>
+        /// <param name="tokens">Object with current Access token and Refresh token</param>
+        [AllowAnonymous]
+        [HttpPost("RefreshToken")]
+        public async Task<IActionResult> RefreshToken([FromBody] TokenModel tokens)
+        {
+            if (tokens == null)
+                return BadRequest("Invalid request! No tokens were found.");
+
+            var principal = GetPrincipalFromExpiredToken(tokens.AccessToken);
+            if (principal == null)
+            {
+                return BadRequest("Invalid access token or refresh token!");
+            }
+
+            string? username = principal.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"))?.Value;
+
+            if (username == null)
+                return BadRequest("User not found in the token!");
+
+            string? dbToken = null;
+            DateTime? expiry = null;
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                RefreshToken? token = await db.RefreshTokens.FirstOrDefaultAsync(x => username.Equals(x.Login));
+                if(token != null)
+                {
+                    dbToken = token.Token;
+                    expiry = token.Expiry;
+                }
+            }
+
+            if (tokens.RefreshToken != dbToken)
+                return BadRequest("Invalid access token or refresh token");
+            if (expiry <= DateTime.Now)
+                return Unauthorized("Refresh token is expired");
+
+            var newAccessToken = GenerateJSONWebToken(principal.Claims.ToList());
+            var newRefreshToken = GenerateRefreshToken();
+
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                var transaction = db.Database.BeginTransaction();
+                try
+                {
+                    RefreshToken? token = await db.RefreshTokens.FirstOrDefaultAsync(x => username.Equals(x.Login));
+                    if (token != null)
+                    {
+                        token.Token = newRefreshToken;
+                        token.Expiry = DateTime.Now.AddDays(1);
+                        db.Update(token);
+                        await db.SaveChangesAsync();
+                    }
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                transaction.Commit();
+            }
+
+            return Ok(new TokenModel(newAccessToken, newRefreshToken));
+        }
+        /// <summary>
+        /// Tests if the user is authorized
+        /// </summary>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("IsLoggedIn")]
+        public IActionResult IsLoggedIn()
+        {
+            Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"));
+
+            if (login == null)
+                return Unauthorized("User does not have name identifier claim!");
+
+            return Ok($"The user is logged in.\n{login.Value}");
+        }
+        private string GenerateJSONWebToken(UserModel userInfo)
+        {
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"] ?? string.Empty));
+            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            var claims = new[] {
+                new Claim(JwtRegisteredClaimNames.Sub, userInfo.Username),
+                new Claim(ClaimTypes.Role, userInfo.ConvertFromEnum()),
+                new Claim(JwtRegisteredClaimNames.Email, userInfo.Email ?? ""),
+                new Claim(JwtRegisteredClaimNames.Azp, userInfo.OrganizationName ?? "")
+            };
+
+            var token = new JwtSecurityToken(_configuration["Jwt:Issuer"],
+              _configuration["Jwt:Audience"],
+              claims,
+              expires: DateTime.Now.AddMinutes(30),
+              signingCredentials: credentials);
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+        private string GenerateJSONWebToken(List<Claim> authClaims)
+        {
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Key"] ?? string.Empty));
+            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            var token = new JwtSecurityToken(
+                issuer: _configuration["JWT:Issuer"],
+                audience: _configuration["JWT:Audience"],
+                authClaims,
+                expires: DateTime.Now.AddMinutes(30),
+                signingCredentials: credentials
+                );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+        private static string GenerateRefreshToken()
+        {
+            var randomNumber = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            return Convert.ToBase64String(randomNumber);
+        }
+        private async Task<UserModel?> AuthenticateUser(LoginModel user)
+        {
+            UserModel? userModel = null;
+            string salt = "";
+
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? dbUser = await db.Users.FindAsync(user.Username);
+                if (dbUser != null)
+                {
+                    userModel = new UserModel(
+                                dbUser.Login,
+                                dbUser.Password,
+                                UserModel.ConvertToEnum(dbUser.Type),
+                                dbUser.Email,
+                                dbUser.Organization
+                            );
+                    salt = dbUser.Salt;
+                    if (string.IsNullOrEmpty(salt))
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            return (userModel != null && userModel.VerifyPassword(user.GetSecurePassword(), salt)) ? userModel : null;
+        }
+        private ClaimsPrincipal? GetPrincipalFromExpiredToken(string? token)
+        {
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Key"] ?? string.Empty)),
+                ValidateLifetime = false
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
+            if (securityToken is not JwtSecurityToken jwtSecurityToken || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+                throw new SecurityTokenException("Invalid token");
+
+            return principal;
+        }
+    }
+}

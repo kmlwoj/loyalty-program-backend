@@ -1,0 +1,21 @@
+﻿using System;
+using System.Collections.Generic;
+
+namespace lojalBackend.DbContexts.MainContext;
+
+public partial class Offer
+{
+    public int OfferId { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public int Price { get; set; }
+
+    public string Organization { get; set; } = null!;
+
+    public virtual ICollection<Code> Codes { get; set; } = new List<Code>();
+
+    public virtual ICollection<Discount> Discounts { get; set; } = new List<Discount>();
+
+    public virtual Organization OrganizationNavigation { get; set; } = null!;
+}
