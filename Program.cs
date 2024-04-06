@@ -1,4 +1,5 @@
 using Irony.Parsing;
+using lojalBackend.Controllers;
 using lojalBackend.DbContexts.MainContext;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -63,6 +64,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? ""))
     };
+    options.MapInboundClaims = false;
     options.Events = new JwtBearerEvents
     {
         OnMessageReceived = context =>
@@ -70,10 +72,29 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
             if (context.Request.Cookies.ContainsKey("X-Access-Token"))
             {
                 context.Token = context.Request.Cookies["X-Access-Token"];
+                var tokenHandler = new JwtSecurityTokenHandler();
+                try
+                {
+                    var principal = tokenHandler.ValidateToken(context.Token, options.TokenValidationParameters, out SecurityToken securityToken);
+                }
+                catch(SecurityTokenExpiredException)
+                {
+                    context.Token = LoginController.RefreshToken(
+                        new DydaktykaBackend.Models.TokenModel(context.Request.Cookies["X-Access-Token"] ?? string.Empty, context.Request.Cookies["X-Refresh-Token"] ?? string.Empty),
+                        builder.Configuration["Jwt:Key"] ?? string.Empty,
+                        builder.Configuration.GetConnectionString("MainConn") ?? "",
+                        builder.Configuration["Jwt:Issuer"] ?? string.Empty,
+                        builder.Configuration["Jwt:Audience"] ?? string.Empty
+                        );
+                    if (!string.IsNullOrEmpty(context.Token))
+                    {
+                        context.Response.Cookies.Delete("X-Access-Token");
+                        context.Response.Cookies.Append("X-Access-Token", context.Token, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                    }
+                }
             }
             return Task.CompletedTask;
         }
-        
     };
 });
 
