@@ -64,7 +64,10 @@ namespace lojalBackend.Controllers
                     transaction.Commit();
                 }
 
-                response = Ok(new TokenModel(tokenString, refreshToken));
+                Response.Cookies.Append("X-Access-Token", tokenString, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                Response.Cookies.Append("X-Username", user.Username, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                Response.Cookies.Append("X-Refresh-Token", refreshToken, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                response = Ok();
             }
 
             return response;
@@ -217,7 +220,10 @@ namespace lojalBackend.Controllers
                     throw;
                 }
             }
-
+            foreach (var cookie in HttpContext.Request.Cookies)
+            {
+                Response.Cookies.Delete(cookie.Key);
+            }
             return Ok("Account logged out.");
         }
         /// <summary>
@@ -284,7 +290,10 @@ namespace lojalBackend.Controllers
                 transaction.Commit();
             }
 
-            return Ok(new TokenModel(newAccessToken, newRefreshToken));
+            Response.Cookies.Append("X-Access-Token", newAccessToken, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+            Response.Cookies.Append("X-Username", username, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+            Response.Cookies.Append("X-Refresh-Token", newRefreshToken, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+            return Ok();
         }
         /// <summary>
         /// Tests if the user is authorized
