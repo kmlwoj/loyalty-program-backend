@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -64,7 +65,16 @@ namespace lojalBackend.Controllers
                     transaction.Commit();
                 }
 
-                response = Ok(new TokenModel(tokenString, refreshToken));
+                string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
+                foreach(var cookie in HttpContext.Request.Cookies.Where(x => keys.Contains(x.Key)))
+                {
+                    Response.Cookies.Delete(cookie.Key);
+                }
+
+                Response.Cookies.Append("X-Access-Token", tokenString, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                Response.Cookies.Append("X-Username", user.Username, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                Response.Cookies.Append("X-Refresh-Token", refreshToken, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                response = Ok();
             }
 
             return response;
@@ -217,74 +227,11 @@ namespace lojalBackend.Controllers
                     throw;
                 }
             }
-
+            foreach (var cookie in HttpContext.Request.Cookies)
+            {
+                Response.Cookies.Delete(cookie.Key);
+            }
             return Ok("Account logged out.");
-        }
-        /// <summary>
-        /// Refreshes active JWT tokens
-        /// </summary>
-        /// <param name="tokens">Object with current Access token and Refresh token</param>
-        [AllowAnonymous]
-        [HttpPost("RefreshToken")]
-        public async Task<IActionResult> RefreshToken([FromBody] TokenModel tokens)
-        {
-            if (tokens == null)
-                return BadRequest("Invalid request! No tokens were found.");
-
-            var principal = GetPrincipalFromExpiredToken(tokens.AccessToken);
-            if (principal == null)
-            {
-                return BadRequest("Invalid access token or refresh token!");
-            }
-
-            string? username = principal.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"))?.Value;
-
-            if (username == null)
-                return BadRequest("User not found in the token!");
-
-            string? dbToken = null;
-            DateTime? expiry = null;
-            using (LojClientDbContext db = new(ConnStr))
-            {
-                RefreshToken? token = await db.RefreshTokens.FirstOrDefaultAsync(x => username.Equals(x.Login));
-                if(token != null)
-                {
-                    dbToken = token.Token;
-                    expiry = token.Expiry;
-                }
-            }
-
-            if (tokens.RefreshToken != dbToken)
-                return BadRequest("Invalid access token or refresh token");
-            if (expiry <= DateTime.Now)
-                return Unauthorized("Refresh token is expired");
-
-            var newAccessToken = GenerateJSONWebToken(principal.Claims.ToList());
-            var newRefreshToken = GenerateRefreshToken();
-
-            using (LojClientDbContext db = new(ConnStr))
-            {
-                var transaction = db.Database.BeginTransaction();
-                try
-                {
-                    RefreshToken? token = await db.RefreshTokens.FirstOrDefaultAsync(x => username.Equals(x.Login));
-                    if (token != null)
-                    {
-                        token.Token = newRefreshToken;
-                        token.Expiry = DateTime.Now.AddDays(1);
-                        db.Update(token);
-                        await db.SaveChangesAsync();
-                    }
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                transaction.Commit();
-            }
-
-            return Ok(new TokenModel(newAccessToken, newRefreshToken));
         }
         /// <summary>
         /// Tests if the user is authorized
@@ -299,6 +246,43 @@ namespace lojalBackend.Controllers
                 return Unauthorized("User does not have name identifier claim!");
 
             return Ok($"The user is logged in.\n{login.Value}");
+        }
+        public static string RefreshToken(TokenModel tokens, string JWTKey, string ConnStr, string JWTIssuer, string JWTAudience)
+        {
+            if (tokens == null)
+                throw new Exception("Invalid request! No tokens were found.");
+
+            var principal = GetPrincipalFromExpiredToken(tokens.AccessToken, JWTKey);
+            if (principal == null)
+            {
+                throw new Exception("Invalid access token or refresh token!");
+            }
+
+            string? username = principal.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"))?.Value;
+
+            if (username == null)
+                throw new Exception("User not found in the token!");
+
+            string? dbToken = null;
+            DateTime? expiry = null;
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                RefreshToken? token = db.RefreshTokens.FirstOrDefault(x => username.Equals(x.Login));
+                if(token != null)
+                {
+                    dbToken = token.Token;
+                    expiry = token.Expiry;
+                }
+            }
+
+            if (tokens.RefreshToken != dbToken)
+                throw new Exception("Invalid access token or refresh token");
+            if (expiry <= DateTime.Now)
+                throw new Exception("Refresh token is expired");
+
+            var newAccessToken = GenerateJSONWebToken(principal.Claims.ToList(), JWTKey, JWTIssuer, JWTAudience);
+
+            return newAccessToken;
         }
         private string GenerateJSONWebToken(UserModel userInfo)
         {
@@ -315,19 +299,19 @@ namespace lojalBackend.Controllers
             var token = new JwtSecurityToken(_configuration["Jwt:Issuer"],
               _configuration["Jwt:Audience"],
               claims,
-              expires: DateTime.Now.AddMinutes(30),
+              expires: DateTime.Now.AddDays(-1),
               signingCredentials: credentials);
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
-        private string GenerateJSONWebToken(List<Claim> authClaims)
+        private static string GenerateJSONWebToken(List<Claim> authClaims, string JWTKey, string JWTIssuer, string JWTAudience)
         {
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Key"] ?? string.Empty));
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JWTKey));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
-                issuer: _configuration["JWT:Issuer"],
-                audience: _configuration["JWT:Audience"],
+                issuer: JWTIssuer,
+                audience: JWTAudience,
                 authClaims,
                 expires: DateTime.Now.AddMinutes(30),
                 signingCredentials: credentials
@@ -369,14 +353,14 @@ namespace lojalBackend.Controllers
 
             return (userModel != null && userModel.VerifyPassword(user.GetSecurePassword(), salt)) ? userModel : null;
         }
-        private ClaimsPrincipal? GetPrincipalFromExpiredToken(string? token)
+        private static ClaimsPrincipal? GetPrincipalFromExpiredToken(string? token, string JWTKey)
         {
             var tokenValidationParameters = new TokenValidationParameters
             {
                 ValidateAudience = false,
                 ValidateIssuer = false,
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Key"] ?? string.Empty)),
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JWTKey)),
                 ValidateLifetime = false
             };
 
