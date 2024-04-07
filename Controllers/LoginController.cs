@@ -203,7 +203,7 @@ namespace lojalBackend.Controllers
         {
             using (LojClientDbContext db = new(ConnStr))
             {
-                Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"));
+                Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
 
                 if (login == null)
                     return Unauthorized("User does not have name identifier claim!");
@@ -240,7 +240,7 @@ namespace lojalBackend.Controllers
         [HttpGet("IsLoggedIn")]
         public IActionResult IsLoggedIn()
         {
-            Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"));
+            Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
 
             if (login == null)
                 return Unauthorized("User does not have name identifier claim!");
@@ -258,7 +258,7 @@ namespace lojalBackend.Controllers
                 throw new Exception("Invalid access token or refresh token!");
             }
 
-            string? username = principal.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"))?.Value;
+            string? username = principal.Claims.FirstOrDefault(c => c.Type.Contains("sub"))?.Value;
 
             if (username == null)
                 throw new Exception("User not found in the token!");
@@ -364,7 +364,10 @@ namespace lojalBackend.Controllers
                 ValidateLifetime = false
             };
 
-            var tokenHandler = new JwtSecurityTokenHandler();
+            var tokenHandler = new JwtSecurityTokenHandler
+            {
+                MapInboundClaims = false
+            };
             var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
             if (securityToken is not JwtSecurityToken jwtSecurityToken || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
                 throw new SecurityTokenException("Invalid token");

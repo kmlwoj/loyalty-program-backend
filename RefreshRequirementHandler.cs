@@ -21,7 +21,7 @@ namespace lojalBackend
             string? dbRefreshToken = null;
             using (LojClientDbContext db = new(requirement.ConnectionString))
             {
-                Claim? login = context.User.Claims.FirstOrDefault(c => c.Type.Contains("nameidentifier"));
+                Claim? login = context.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
 
                 if (login != null)
                 {
@@ -36,11 +36,14 @@ namespace lojalBackend
             else
             {
                 context.Fail();
-                httpContextAccessor?.HttpContext?.Response.OnStarting(() =>
+                if (httpContextAccessor?.HttpContext is not null && !httpContextAccessor.HttpContext.Response.HasStarted)
                 {
-                    httpContextAccessor.HttpContext.Response.StatusCode = 401;
-                    return Task.CompletedTask;
-                });
+                    httpContextAccessor.HttpContext.Response.OnStarting(() =>
+                    {
+                        httpContextAccessor.HttpContext.Response.StatusCode = 401;
+                        return Task.CompletedTask;
+                    });
+                }
             }
             return Task.CompletedTask;
         }

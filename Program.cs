@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -67,9 +68,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     options.MapInboundClaims = false;
     options.Events = new JwtBearerEvents
     {
-        OnMessageReceived = context =>
+        OnMessageReceived = context  =>
         {
-            if (context.Request.Cookies.ContainsKey("X-Access-Token"))
+            if (context.Request.Cookies.ContainsKey("X-Access-Token") && !"/api/Login/Login".Equals(context.Request.Path))
             {
                 context.Token = context.Request.Cookies["X-Access-Token"];
                 var tokenHandler = new JwtSecurityTokenHandler();
@@ -79,13 +80,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                 }
                 catch(SecurityTokenExpiredException)
                 {
-                    context.Token = LoginController.RefreshToken(
-                        new DydaktykaBackend.Models.TokenModel(context.Request.Cookies["X-Access-Token"] ?? string.Empty, context.Request.Cookies["X-Refresh-Token"] ?? string.Empty),
-                        builder.Configuration["Jwt:Key"] ?? string.Empty,
-                        builder.Configuration.GetConnectionString("MainConn") ?? "",
-                        builder.Configuration["Jwt:Issuer"] ?? string.Empty,
-                        builder.Configuration["Jwt:Audience"] ?? string.Empty
-                        );
+                    try
+                    {
+                        context.Token = LoginController.RefreshToken(
+                            new DydaktykaBackend.Models.TokenModel(context.Request.Cookies["X-Access-Token"] ?? string.Empty, context.Request.Cookies["X-Refresh-Token"] ?? string.Empty),
+                            builder.Configuration["Jwt:Key"] ?? string.Empty,
+                            builder.Configuration.GetConnectionString("MainConn") ?? "",
+                            builder.Configuration["Jwt:Issuer"] ?? string.Empty,
+                            builder.Configuration["Jwt:Audience"] ?? string.Empty
+                            );
+                    }
+                    catch(Exception err)
+                    {
+                        if("Refresh token is expired".Equals(err.Message) && context.Request.Cookies.ContainsKey("X-Access-Token"))
+                        {
+                            string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
+                            foreach (var cookie in context.Request.Cookies.Where(x => keys.Contains(x.Key)))
+                            {
+                                context.Response.Cookies.Delete(cookie.Key);
+                            }
+                        }
+                        context.Token = null;
+                        context.Response.StatusCode = 401;
+                        context.Response.ContentType = "text/plain";
+                        byte[] data = Encoding.UTF8.GetBytes(err.Message);
+                        return context.Response.Body.WriteAsync(data, 0, data.Length);
+                    }
                     if (!string.IsNullOrEmpty(context.Token))
                     {
                         context.Response.Cookies.Delete("X-Access-Token");
