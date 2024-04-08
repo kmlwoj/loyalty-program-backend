@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace lojalBackend.DbContexts.MainContext;
+namespace lojalBackend;
 
 public partial class RefreshToken
 {
@@ -10,6 +10,4 @@ public partial class RefreshToken
     public string? Token { get; set; }
 
     public DateTime? Expiry { get; set; }
-
-    public virtual User LoginNavigation { get; set; } = null!;
 }

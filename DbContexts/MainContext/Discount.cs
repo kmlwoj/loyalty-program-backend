@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace lojalBackend.DbContexts.MainContext;
+namespace lojalBackend;
 
 public partial class Discount
 {
