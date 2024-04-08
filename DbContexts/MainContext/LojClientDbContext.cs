@@ -9,10 +9,13 @@ public partial class LojClientDbContext : DbContext
     {
         _ConnStr = string.Empty;
     }
+
     public LojClientDbContext(string? ConnStr)
     {
         _ConnStr = ConnStr;
     }
+
+    public virtual DbSet<Category> Categories { get; set; }
 
     public virtual DbSet<Code> Codes { get; set; }
 
@@ -37,6 +40,17 @@ public partial class LojClientDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.HasKey(e => e.Name).HasName("PRIMARY");
+
+            entity.ToTable("CATEGORIES");
+
+            entity.Property(e => e.Name)
+                .HasMaxLength(128)
+                .HasColumnName("NAME");
+        });
+
         modelBuilder.Entity<Code>(entity =>
         {
             entity.HasKey(e => e.CodeId).HasName("PRIMARY");
@@ -124,14 +138,23 @@ public partial class LojClientDbContext : DbContext
 
             entity.ToTable("OFFERS");
 
+            entity.HasIndex(e => e.Category, "CATEGORY");
+
             entity.HasIndex(e => e.Organization, "ORGANIZATION");
 
             entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
+            entity.Property(e => e.Category)
+                .HasMaxLength(128)
+                .HasColumnName("CATEGORY");
             entity.Property(e => e.Name)
                 .HasMaxLength(255)
                 .HasColumnName("NAME");
             entity.Property(e => e.Organization).HasColumnName("ORGANIZATION");
             entity.Property(e => e.Price).HasColumnName("PRICE");
+
+            entity.HasOne(d => d.CategoryNavigation).WithMany(p => p.Offers)
+                .HasForeignKey(d => d.Category)
+                .HasConstraintName("OFFERS_ibfk_2");
 
             entity.HasOne(d => d.OrganizationNavigation).WithMany(p => p.Offers)
                 .HasForeignKey(d => d.Organization)
@@ -157,22 +180,15 @@ public partial class LojClientDbContext : DbContext
 
             entity.ToTable("REFRESH_TOKENS");
 
-            entity.HasIndex(e => e.Login, "LOGIN");
-
-            entity.Property(e => e.Expiry)
-                .HasColumnType("date")
-                .HasColumnName("EXPIRY");
             entity.Property(e => e.Login)
                 .HasMaxLength(128)
                 .HasColumnName("LOGIN");
+            entity.Property(e => e.Expiry)
+                .HasColumnType("date")
+                .HasColumnName("EXPIRY");
             entity.Property(e => e.Token)
                 .HasMaxLength(128)
                 .HasColumnName("TOKEN");
-
-            entity.HasOne(d => d.LoginNavigation).WithMany()
-                .HasForeignKey(d => d.Login)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("REFRESH_TOKENS_ibfk_1");
         });
 
         modelBuilder.Entity<Transaction>(entity =>

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace lojalBackend.DbContexts.MainContext;
+namespace lojalBackend;
 
 public partial class Offer
 {
@@ -12,6 +12,10 @@ public partial class Offer
     public int Price { get; set; }
 
     public string Organization { get; set; } = null!;
+
+    public string? Category { get; set; }
+
+    public virtual Category? CategoryNavigation { get; set; }
 
     public virtual ICollection<Code> Codes { get; set; } = new List<Code>();
 
