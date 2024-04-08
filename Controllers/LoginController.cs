@@ -80,29 +80,34 @@ namespace lojalBackend.Controllers
             return response;
         }
         /// <summary>
-        /// Registers new user
+        /// Registers new user (with manager privileges)
         /// </summary>
         /// <param name="user">Object with user data</param>
-        [AllowAnonymous]
-        [HttpPost("Register")]
-        public async Task<IActionResult> Register([FromBody] UserModel user)
+        [Authorize(Policy = "IsLoggedIn", Roles = "Manager")]
+        [HttpPost("RegisterForManager")]
+        public async Task<IActionResult> RegisterForManager([FromBody] UserModel user)
         {
-            if (user.AccountType is null)
-                return BadRequest("Type of an account was not supplied!");
-            if (user.AccountType is AccountTypes.Administrator)
-                return BadRequest("You cannot register an Administrator account!");
             if (!user.IsPassword())
                 return BadRequest("Password was not supplied!");
             if (string.IsNullOrEmpty(user.Username))
                 return BadRequest("Username was not supplied!");
+            if (user.AccountType is null)
+                return BadRequest("Type of an account was not supplied!");
+            if (user.AccountType.Equals(AccountTypes.Administrator))
+                return BadRequest("You cannot create administrator accounts!");
             if (string.IsNullOrEmpty(user.Email))
-                return BadRequest("Email was not supplied");
+                return BadRequest("Email was not supplied!");
+            if (!user.OrganizationName.Equals(HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value))
+                return BadRequest("You cannot create account for another organization!");
 
             using (LojClientDbContext db = new(ConnStr))
             {
                 User? dbUser = await db.Users.FindAsync(user.Username);
-                if(dbUser != null)
+                if (dbUser != null)
                     return BadRequest("Username is taken!");
+                Organization? dbOrg = await db.Organizations.FindAsync(user.OrganizationName);
+                if (dbOrg == null)
+                    return NotFound("Given organization not found in the system!");
 
                 byte[] salt = user.EncryptPassword();
 
@@ -125,6 +130,7 @@ namespace lojalBackend.Controllers
                         Login = user.Username
                     };
                     db.RefreshTokens.Add(token);
+
                     await db.SaveChangesAsync();
 
                     transaction.Commit();
@@ -159,6 +165,11 @@ namespace lojalBackend.Controllers
                 User? dbUser = await db.Users.FindAsync(user.Username);
                 if (dbUser != null)
                     return BadRequest("Username is taken!");
+                Organization? dbOrg = await db.Organizations.FindAsync(user.OrganizationName);
+                if (dbOrg == null)
+                    return NotFound("Given organization not found in the system!");
+                else if (!dbOrg.Type.Equals("Client"))
+                    return BadRequest("You can only create accounts for clients!");
 
                 byte[] salt = user.EncryptPassword();
 

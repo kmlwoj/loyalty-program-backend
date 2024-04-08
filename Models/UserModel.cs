@@ -11,8 +11,8 @@ namespace DydaktykaBackend.Models
     public enum AccountTypes
     {
         Administrator,
-        Creator,
-        User
+        Manager,
+        Worker
     }
     public class UserModel
     {
@@ -28,7 +28,7 @@ namespace DydaktykaBackend.Models
             Username = username;
             Password = password;
             SecurePassword();
-            AccountType = AccountTypes.User;
+            AccountType = AccountTypes.Worker;
             OrganizationName = string.Empty;
         }
         public UserModel(string username, string password, AccountTypes accountType, string? email, string organizationName) : this(username, password)
@@ -52,8 +52,8 @@ namespace DydaktykaBackend.Models
             switch (AccountType)
             {
                 case AccountTypes.Administrator: return "Administrator";
-                case AccountTypes.Creator: return "Creator";
-                case AccountTypes.User: return "User";
+                case AccountTypes.Manager: return "Manager";
+                case AccountTypes.Worker: return "Worker";
                 default: return "";
             }
         }
@@ -62,9 +62,9 @@ namespace DydaktykaBackend.Models
             switch (type)
             {
                 case "Administrator": return AccountTypes.Administrator;
-                case "Creator": return AccountTypes.Creator;
-                case "User": return AccountTypes.User;
-                default: return AccountTypes.User;
+                case "Manager": return AccountTypes.Manager;
+                case "Worker": return AccountTypes.Worker;
+                default: return AccountTypes.Worker;
             }
         }
         public byte[] EncryptPassword()
