@@ -66,14 +66,16 @@ namespace lojalBackend.Controllers
                 }
 
                 string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
-                foreach(var cookie in HttpContext.Request.Cookies.Where(x => keys.Contains(x.Key)))
+                var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
+                cookieOpt.Extensions.Add("Partitioned");
+                foreach (var cookie in HttpContext.Request.Cookies.Where(x => keys.Contains(x.Key)))
                 {
-                    Response.Cookies.Delete(cookie.Key);
+                    Response.Cookies.Delete(cookie.Key, cookieOpt);
                 }
 
-                Response.Cookies.Append("X-Access-Token", tokenString, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
-                Response.Cookies.Append("X-Username", user.Username, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
-                Response.Cookies.Append("X-Refresh-Token", refreshToken, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                Response.Cookies.Append("X-Access-Token", tokenString, cookieOpt);
+                Response.Cookies.Append("X-Username", user.Username, cookieOpt);
+                Response.Cookies.Append("X-Refresh-Token", refreshToken, cookieOpt);
                 response = Ok();
             }
 
@@ -174,9 +176,11 @@ namespace lojalBackend.Controllers
                     throw;
                 }
             }
+            var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
+            cookieOpt.Extensions.Add("Partitioned");
             foreach (var cookie in HttpContext.Request.Cookies)
             {
-                Response.Cookies.Delete(cookie.Key);
+                Response.Cookies.Delete(cookie.Key, cookieOpt);
             }
             return Ok("Account logged out.");
         }

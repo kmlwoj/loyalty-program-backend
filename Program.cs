@@ -95,9 +95,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                         if("Refresh token is expired".Equals(err.Message) && context.Request.Cookies.ContainsKey("X-Access-Token"))
                         {
                             string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
+                            var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
+                            cookieOpt.Extensions.Add("Partitioned");
                             foreach (var cookie in context.Request.Cookies.Where(x => keys.Contains(x.Key)))
                             {
-                                context.Response.Cookies.Delete(cookie.Key);
+                                context.Response.Cookies.Delete(cookie.Key, cookieOpt);
                             }
                         }
                         context.Token = null;
@@ -108,8 +110,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                     }
                     if (!string.IsNullOrEmpty(context.Token))
                     {
-                        context.Response.Cookies.Delete("X-Access-Token");
-                        context.Response.Cookies.Append("X-Access-Token", context.Token, new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.Strict });
+                        var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
+                        cookieOpt.Extensions.Add("Partitioned");
+                        context.Response.Cookies.Delete("X-Access-Token", cookieOpt);
+                        context.Response.Cookies.Append("X-Access-Token", context.Token, cookieOpt);
                     }
                 }
             }
