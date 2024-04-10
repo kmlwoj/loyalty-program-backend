@@ -1,5 +1,6 @@
 ﻿using DydaktykaBackend.Models;
 using lojalBackend.DbContexts.MainContext;
+using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -60,7 +61,7 @@ namespace lojalBackend.Controllers
                         Password = user.Password,
                         Email = user.Email,
                         Type = user.ConvertFromEnum(),
-                        Organization = organization,
+                        Organization = organization ?? string.Empty,
                         Salt = Convert.ToHexString(salt)
                     };
                     db.Users.Add(newUser);
@@ -82,6 +83,35 @@ namespace lojalBackend.Controllers
                 }
             }
             return Ok("User successfully added!");
+        }
+        /// <summary>
+        /// Retrieves list of users from a given organization
+        /// </summary>
+        /// <param name="organization">Targeted organization only for administration (null will get the user's organization)</param>
+        /// <returns></returns>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Manager,Administrator")]
+        [HttpGet("GetUsers")]
+        public async Task<IActionResult> GetUsers([FromQuery] string? organization)
+        {
+            if (organization is not null && HttpContext.User.IsInRole("Manager"))
+                return BadRequest("Manager cannot check users of different organizations!");
+
+            List<UserDbModel> users = new();
+            string? localOrganization = organization is null ? HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value : organization;
+
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                Organization? dbOrg = await db.Organizations.FindAsync(localOrganization);
+                if (dbOrg == null)
+                    return NotFound("Given organization not found in the system!");
+
+                var dbUsers = db.Users.Where(x => x.Organization.Equals(localOrganization)).ToList();
+                foreach (var user in dbUsers)
+                {
+                    users.Add(new(user.Login, UserModel.ConvertToEnum(user.Type), user.Credits ?? 0, user.LatestUpdate));
+                }
+            }
+            return new JsonResult(users);
         }
     }
 }
