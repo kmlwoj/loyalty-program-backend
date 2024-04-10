@@ -106,8 +106,6 @@ namespace lojalBackend.Controllers
                 Organization? dbOrg = await db.Organizations.FindAsync(user.OrganizationName);
                 if (dbOrg == null)
                     return NotFound("Given organization not found in the system!");
-                else if (!dbOrg.Type.Equals("Client"))
-                    return BadRequest("You can only create accounts for clients!");
 
                 byte[] salt = user.EncryptPassword();
 
