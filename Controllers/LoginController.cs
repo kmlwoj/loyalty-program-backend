@@ -80,76 +80,12 @@ namespace lojalBackend.Controllers
             return response;
         }
         /// <summary>
-        /// Registers new user (with manager privileges)
-        /// </summary>
-        /// <param name="user">Object with user data</param>
-        [Authorize(Policy = "IsLoggedIn", Roles = "Manager")]
-        [HttpPost("RegisterForManager")]
-        public async Task<IActionResult> RegisterForManager([FromBody] UserModel user)
-        {
-            if (!user.IsPassword())
-                return BadRequest("Password was not supplied!");
-            if (string.IsNullOrEmpty(user.Username))
-                return BadRequest("Username was not supplied!");
-            if (user.AccountType is null)
-                return BadRequest("Type of an account was not supplied!");
-            if (user.AccountType.Equals(AccountTypes.Administrator))
-                return BadRequest("You cannot create administrator accounts!");
-            if (string.IsNullOrEmpty(user.Email))
-                return BadRequest("Email was not supplied!");
-            if (!user.OrganizationName.Equals(HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value))
-                return BadRequest("You cannot create account for another organization!");
-
-            using (LojClientDbContext db = new(ConnStr))
-            {
-                User? dbUser = await db.Users.FindAsync(user.Username);
-                if (dbUser != null)
-                    return BadRequest("Username is taken!");
-                Organization? dbOrg = await db.Organizations.FindAsync(user.OrganizationName);
-                if (dbOrg == null)
-                    return NotFound("Given organization not found in the system!");
-
-                byte[] salt = user.EncryptPassword();
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
-                {
-                    User newUser = new()
-                    {
-                        Login = user.Username,
-                        Password = user.Password,
-                        Email = user.Email,
-                        Type = user.ConvertFromEnum(),
-                        Organization = user.OrganizationName,
-                        Salt = Convert.ToHexString(salt)
-                    };
-                    db.Users.Add(newUser);
-
-                    RefreshToken token = new()
-                    {
-                        Login = user.Username
-                    };
-                    db.RefreshTokens.Add(token);
-
-                    await db.SaveChangesAsync();
-
-                    transaction.Commit();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-            }
-            return Ok("User successfully added!");
-        }
-        /// <summary>
         /// Registers new user (with administrator privileges)
         /// </summary>
         /// <param name="user">Object with user data</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPost("RegisterForAdmin")]
-        public async Task<IActionResult> RegisterForAdmin([FromBody] UserModel user)
+        public async Task<IActionResult> RegisterForAdmin([FromBody] AdminUserModel user)
         {
             if (!user.IsPassword())
                 return BadRequest("Password was not supplied!");
@@ -295,7 +231,7 @@ namespace lojalBackend.Controllers
 
             return newAccessToken;
         }
-        private string GenerateJSONWebToken(UserModel userInfo)
+        private string GenerateJSONWebToken(AdminUserModel userInfo)
         {
             var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"] ?? string.Empty));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -337,9 +273,9 @@ namespace lojalBackend.Controllers
             rng.GetBytes(randomNumber);
             return Convert.ToBase64String(randomNumber);
         }
-        private async Task<UserModel?> AuthenticateUser(LoginModel user)
+        private async Task<AdminUserModel?> AuthenticateUser(LoginModel user)
         {
-            UserModel? userModel = null;
+            AdminUserModel? userModel = null;
             string salt = "";
 
             using (LojClientDbContext db = new(ConnStr))
@@ -347,7 +283,7 @@ namespace lojalBackend.Controllers
                 User? dbUser = await db.Users.FindAsync(user.Username);
                 if (dbUser != null)
                 {
-                    userModel = new UserModel(
+                    userModel = new AdminUserModel(
                                 dbUser.Login,
                                 dbUser.Password,
                                 UserModel.ConvertToEnum(dbUser.Type),
