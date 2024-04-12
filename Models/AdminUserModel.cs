@@ -7,7 +7,10 @@ namespace lojalBackend.Models
     {
         public string OrganizationName { get; set; }
         [JsonConstructor]
-        public AdminUserModel(string username, string password) : base(username, password) { }
+        public AdminUserModel(string username, string password) : base(username, password)
+        {
+            OrganizationName = string.Empty;
+        }
         public AdminUserModel(string username, string password, AccountTypes accountType, string? email, string organizationName) : base(username, password)
         {
             OrganizationName = organizationName;

@@ -88,7 +88,7 @@ namespace lojalBackend.Controllers
         /// Retrieves list of users from a given organization
         /// </summary>
         /// <param name="organization">Targeted organization only for administration (null will get the user's organization)</param>
-        /// <returns></returns>
+        /// <returns>Object of UserDbModel type</returns>
         [Authorize(Policy = "IsLoggedIn", Roles = "Manager,Administrator")]
         [HttpGet("GetUsers")]
         public async Task<IActionResult> GetUsers([FromQuery] string? organization)
@@ -105,13 +105,97 @@ namespace lojalBackend.Controllers
                 if (dbOrg == null)
                     return NotFound("Given organization not found in the system!");
 
-                var dbUsers = db.Users.Where(x => x.Organization.Equals(localOrganization)).ToList();
+                var dbUsers = db.Users.Where(x => x.Organization.Equals(localOrganization));
                 foreach (var user in dbUsers)
                 {
-                    users.Add(new(user.Login, UserModel.ConvertToEnum(user.Type), user.Credits ?? 0, user.LatestUpdate));
+                    users.Add(new(user.Login, user.Email, UserModel.ConvertToEnum(user.Type), user.Credits ?? 0, user.LatestUpdate));
                 }
             }
             return new JsonResult(users);
+        }
+        /// <summary>
+        /// Edits email of a given user
+        /// </summary>
+        /// <param name="user">Object of UserDbModel type with new mail</param>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpPut("EditUserMail")]
+        public async Task<IActionResult> EditUserMail([FromBody] UserDbModel user)
+        {
+            if(HttpContext.User.IsInRole("Worker"))
+            {
+                string? username = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("sub"))?.Value;
+                if (!user.Login.Equals(username))
+                    return BadRequest("Worker cannot change data of another user!");
+            }
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? editedUser = await db.Users.FindAsync(user.Login);
+                if (HttpContext.User.IsInRole("Manager"))
+                {
+                    string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+                    if (organization == null)
+                        return BadRequest("Organization not given in the user credentials!");
+                    if (!organization.Equals(editedUser?.Organization))
+                        return BadRequest("Manager cannot change data of users from another organization!");
+                }
+
+                if (editedUser == null)
+                    return NotFound("User with the given login does not exist!");
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    editedUser.Email = user.Email;
+                    editedUser.LatestUpdate = DateTime.UtcNow;
+                    db.Update(editedUser);
+                    await db.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                transaction.Commit();
+            }
+            return Ok("User mail updated!");
+        }
+        /// <summary>
+        /// Deletes a given user
+        /// </summary>
+        /// <param name="user">Data of user</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Manager,Administrator")]
+        [HttpDelete("DeleteUser")]
+        public async Task<IActionResult> DeleteUser([FromBody] UserDbModel user)
+        {
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? tmpUser = await db.Users.FindAsync(user.Login);
+                if (HttpContext.User.IsInRole("Manager"))
+                {
+                    string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+                    if (organization == null)
+                        return BadRequest("Organization not given in the user credentials!");
+                    if (!organization.Equals(tmpUser?.Organization))
+                        return BadRequest("Manager cannot delete user from another organization!");
+                }
+
+                if (tmpUser == null)
+                    return NotFound("User with the given login does not exist!");
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    db.Users.Remove(tmpUser);
+                    await db.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                transaction.Commit();
+            }
+            return Ok("User deleted!");
         }
     }
 }
