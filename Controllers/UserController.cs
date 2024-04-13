@@ -185,6 +185,8 @@ namespace lojalBackend.Controllers
                 var transaction = await db.Database.BeginTransactionAsync();
                 try
                 {
+                    //TODO: delete refresh token
+                    //TODO: delete transactions
                     db.Users.Remove(tmpUser);
                     await db.SaveChangesAsync();
                 }
@@ -197,5 +199,7 @@ namespace lojalBackend.Controllers
             }
             return Ok("User deleted!");
         }
+        //TODO: add method for changing credits
+        //TODO: add method for setting password
     }
 }

@@ -1,5 +1,4 @@
-﻿using lojalBackend;
-using lojalBackend.DbContexts.MainContext;
+﻿using lojalBackend.DbContexts.MainContext;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Filters;

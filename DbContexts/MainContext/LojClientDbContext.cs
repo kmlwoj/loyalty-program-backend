@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System;
+using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
 
 namespace lojalBackend.DbContexts.MainContext;
 
@@ -61,7 +63,7 @@ public partial class LojClientDbContext : DbContext
 
             entity.Property(e => e.CodeId).HasColumnName("CODE_ID");
             entity.Property(e => e.Expiry)
-                .HasColumnType("date")
+                .HasColumnType("timestamp")
                 .HasColumnName("EXPIRY");
             entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
 
@@ -102,7 +104,7 @@ public partial class LojClientDbContext : DbContext
                 .HasMaxLength(1024)
                 .HasColumnName("BODY");
             entity.Property(e => e.ContReqDate)
-                .HasColumnType("date")
+                .HasColumnType("timestamp")
                 .HasColumnName("CONT_REQ_DATE");
             entity.Property(e => e.Subject)
                 .HasMaxLength(64)
@@ -184,11 +186,16 @@ public partial class LojClientDbContext : DbContext
                 .HasMaxLength(128)
                 .HasColumnName("LOGIN");
             entity.Property(e => e.Expiry)
-                .HasColumnType("date")
+                .HasColumnType("timestamp")
                 .HasColumnName("EXPIRY");
             entity.Property(e => e.Token)
                 .HasMaxLength(128)
                 .HasColumnName("TOKEN");
+
+            entity.HasOne(d => d.LoginNavigation).WithOne(p => p.RefreshToken)
+                .HasForeignKey<RefreshToken>(d => d.Login)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("REFRESH_TOKENS_ibfk_1");
         });
 
         modelBuilder.Entity<Transaction>(entity =>
@@ -211,7 +218,7 @@ public partial class LojClientDbContext : DbContext
             entity.Property(e => e.Price).HasColumnName("PRICE");
             entity.Property(e => e.Shop).HasColumnName("SHOP");
             entity.Property(e => e.TransDate)
-                .HasColumnType("date")
+                .HasColumnType("timestamp")
                 .HasColumnName("TRANS_DATE");
 
             entity.HasOne(d => d.Code).WithMany(p => p.Transactions)
@@ -246,7 +253,7 @@ public partial class LojClientDbContext : DbContext
                 .HasMaxLength(128)
                 .HasColumnName("EMAIL");
             entity.Property(e => e.LatestUpdate)
-                .HasColumnType("date")
+                .HasColumnType("timestamp")
                 .HasColumnName("LATEST_UPDATE");
             entity.Property(e => e.Organization)
                 .HasMaxLength(128)
