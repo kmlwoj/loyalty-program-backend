@@ -259,6 +259,63 @@ namespace lojalBackend.Controllers
             }
             return Ok("Credits changed for the targeted user!");
         }
-        //TODO: add method for setting password
+        /// <summary>
+        /// Changes password of currently logged in user
+        /// </summary>
+        /// <param name="password">Desired new password</param>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpPut("SetPassword")]
+        public async Task<IActionResult> SetPassword([FromBody] string password)
+        {
+            if (string.IsNullOrEmpty(password))
+                return BadRequest("Password cannot be empty!");
+
+            string? username = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("sub"))?.Value;
+            if (string.IsNullOrEmpty(username))
+                return BadRequest("Username in auth token is empty!");
+
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? dbUser = await db.Users.FindAsync(username);
+                LoginModel tmpUser = new(username, password);
+                string salt = string.Empty;
+                AdminUserModel? userModel = null;
+                if (dbUser != null)
+                {
+                    userModel = new(
+                                    dbUser.Login,
+                                    dbUser.Password,
+                                    UserModel.ConvertToEnum(dbUser.Type),
+                                    dbUser.Email,
+                                    dbUser.Organization
+                                );
+                    salt = dbUser.Salt;
+                }
+                if (userModel != null && userModel.VerifyPassword(tmpUser.GetSecurePassword(), salt))
+                    return BadRequest("New password cannot be the same as the old one!");
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    UserModel newPasswordUser = new(username, password);
+                    byte[] newSalt = newPasswordUser.EncryptPassword();
+                    if (dbUser != null)
+                    {
+                        dbUser.Password = newPasswordUser.Password;
+                        dbUser.Salt = Convert.ToHexString(newSalt);
+                        dbUser.LatestUpdate = DateTime.UtcNow;
+                        db.Update(dbUser);
+                    }
+                    await db.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                transaction.Commit();
+            }
+            return Ok("Password changed!");
+        }
     }
 }
