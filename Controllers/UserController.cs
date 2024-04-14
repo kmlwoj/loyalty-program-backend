@@ -185,9 +185,16 @@ namespace lojalBackend.Controllers
                 var transaction = await db.Database.BeginTransactionAsync();
                 try
                 {
-                    //TODO: delete refresh token
-                    //TODO: delete transactions
+                    RefreshToken? token = await db.RefreshTokens.FindAsync(tmpUser.Login);
+                    if(token != null)
+                        db.RefreshTokens.Remove(token);
+
+                    var transactions = db.Transactions.Where(x => tmpUser.Login.Equals(x.Login));
+                    if(transactions != null)
+                        db.Transactions.RemoveRange(transactions);
+
                     db.Users.Remove(tmpUser);
+
                     await db.SaveChangesAsync();
                 }
                 catch
