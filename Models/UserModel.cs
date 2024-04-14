@@ -1,5 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.Net;
+﻿using System.Net;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,7 +20,6 @@ namespace DydaktykaBackend.Models
         private SecureString SecuredPassword;
         public AccountTypes? AccountType { get; set; }
         public string? Email { get; set; }
-        public string OrganizationName { get; set; }
         [JsonConstructor]
         public UserModel(string username, string password)
         {
@@ -29,13 +27,6 @@ namespace DydaktykaBackend.Models
             Password = password;
             SecurePassword();
             AccountType = AccountTypes.Worker;
-            OrganizationName = string.Empty;
-        }
-        public UserModel(string username, string password, AccountTypes accountType, string? email, string organizationName) : this(username, password)
-        {
-            AccountType = accountType;
-            Email = email;
-            OrganizationName = organizationName;
         }
         public bool IsPassword()
         {

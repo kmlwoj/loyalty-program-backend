@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace lojalBackend;
+namespace lojalBackend.DbContexts.MainContext;
 
 public partial class Category
 {

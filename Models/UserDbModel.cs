@@ -1,21 +1,29 @@
-﻿namespace DydaktykaBackend.Models
+﻿using DydaktykaBackend.Models;
+
+namespace lojalBackend.Models
 {
     public class UserDbModel
     {
         public string Login { get; set; }
-        public AccountTypes? AccountType { get; set; }
         public string? Email { get; set; }
-        public string? OrganizationName { get; set; }
+        public AccountTypes Type { get; set; }
+        public int Credits { get; set; }
+        public DateTime? LatestUpdate { get; set; }
         public UserDbModel()
         {
-            Login = "";
+            Login = string.Empty;
+            Email = null;
+            Credits = 0;
+            Type = AccountTypes.Worker;
+            LatestUpdate = DateTime.MinValue;
         }
-        public UserDbModel(string login, AccountTypes? accountType, string? email, string? organizationName)
+        public UserDbModel(string login, string? email, AccountTypes type, int credits, DateTime? latestUpdate)
         {
             Login = login;
-            AccountType = accountType;
             Email = email;
-            OrganizationName = organizationName;
+            Type = type;
+            Credits = credits;
+            LatestUpdate = latestUpdate;
         }
     }
 }
