@@ -130,6 +130,10 @@ namespace lojalBackend.Controllers
             using (LojClientDbContext db = new(ConnStr))
             {
                 User? editedUser = await db.Users.FindAsync(user.Login);
+
+                if (editedUser == null)
+                    return NotFound("User with the given login does not exist!");
+
                 if (HttpContext.User.IsInRole("Manager"))
                 {
                     string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
@@ -138,9 +142,6 @@ namespace lojalBackend.Controllers
                     if (!organization.Equals(editedUser?.Organization))
                         return BadRequest("Manager cannot change data of users from another organization!");
                 }
-
-                if (editedUser == null)
-                    return NotFound("User with the given login does not exist!");
 
                 var transaction = await db.Database.BeginTransactionAsync();
                 try
@@ -170,6 +171,10 @@ namespace lojalBackend.Controllers
             using (LojClientDbContext db = new(ConnStr))
             {
                 User? tmpUser = await db.Users.FindAsync(user.Login);
+
+                if (tmpUser == null)
+                    return NotFound("User with the given login does not exist!");
+
                 if (HttpContext.User.IsInRole("Manager"))
                 {
                     string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
@@ -178,9 +183,6 @@ namespace lojalBackend.Controllers
                     if (!organization.Equals(tmpUser?.Organization))
                         return BadRequest("Manager cannot delete user from another organization!");
                 }
-
-                if (tmpUser == null)
-                    return NotFound("User with the given login does not exist!");
 
                 var transaction = await db.Database.BeginTransactionAsync();
                 try
@@ -206,7 +208,57 @@ namespace lojalBackend.Controllers
             }
             return Ok("User deleted!");
         }
-        //TODO: add method for changing credits
+        /// <summary>
+        /// Changes targeted user's credits
+        /// </summary>
+        /// <param name="login">Targeted user</param>
+        /// <param name="amount">Desired amount for credit change</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Manager,Administrator")]
+        [HttpPost("ChangeCredits/{amount:int}")]
+        public async Task<IActionResult> ChangeCredits([FromBody] string login, int amount)
+        {
+            using (LojClientDbContext db = new(ConnStr))
+            {
+                User? dbUser = await db.Users.FindAsync(login);
+
+                if (dbUser == null)
+                    return NotFound("User with the given login was not found in the system!");
+
+                if (HttpContext.User.IsInRole("Manager"))
+                {
+                    string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+                    if (organization == null)
+                        return BadRequest("Organization not given in the user credentials!");
+                    if (!organization.Equals(dbUser?.Organization))
+                        return BadRequest("Manager cannot manage user from another organization!");
+                }
+
+                var transaction = await db.Database.BeginTransactionAsync();
+                try
+                {
+                    if(amount < 0)
+                    {
+                        if(dbUser.Credits <= Math.Abs(amount))
+                            dbUser.Credits = 0;
+                    }
+                    else
+                    {
+                        dbUser.Credits ??= 0;
+                        dbUser.Credits += amount;
+                    }
+                    dbUser.LatestUpdate = DateTime.UtcNow;
+                    db.Update(dbUser);
+                    await db.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                transaction.Commit();
+            }
+            return Ok("Credits changed for the targeted user!");
+        }
         //TODO: add method for setting password
     }
 }
