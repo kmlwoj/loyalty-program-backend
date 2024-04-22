@@ -4,10 +4,8 @@ namespace lojalBackend
 {
     public class RefreshRequirement : IAuthorizationRequirement
     {
-        public string? ConnectionString { get; private set; }
-        public RefreshRequirement(string? ConnStr)
+        public RefreshRequirement()
         {
-            ConnectionString = ConnStr;
         }
     }
 }

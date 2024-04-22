@@ -6,15 +6,13 @@ namespace lojalBackend.DbContexts.MainContext;
 
 public partial class LojClientDbContext : DbContext
 {
-    private readonly string? _ConnStr;
     public LojClientDbContext()
     {
-        _ConnStr = string.Empty;
     }
 
-    public LojClientDbContext(string? ConnStr)
+    public LojClientDbContext(DbContextOptions<LojClientDbContext> options)
+        : base(options)
     {
-        _ConnStr = ConnStr;
     }
 
     public virtual DbSet<Category> Categories { get; set; }
@@ -36,9 +34,6 @@ public partial class LojClientDbContext : DbContext
     public virtual DbSet<Transaction> Transactions { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
-
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        => optionsBuilder.UseMySQL(_ConnStr ?? string.Empty);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
