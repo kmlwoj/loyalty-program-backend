@@ -75,7 +75,7 @@ namespace lojalBackend.Controllers
 
                 await clientDbContext.SaveChangesAsync();
 
-                transaction.Commit();
+                await transaction.CommitAsync();
             }
             catch
             {
@@ -154,7 +154,7 @@ namespace lojalBackend.Controllers
                 transaction.Rollback();
                 throw;
             }
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Ok("User mail updated!");
         }
@@ -200,7 +200,7 @@ namespace lojalBackend.Controllers
                 transaction.Rollback();
                 throw;
             }
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Ok("User deleted!");
         }
@@ -249,7 +249,7 @@ namespace lojalBackend.Controllers
                 transaction.Rollback();
                 throw;
             }
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Ok("Credits changed for the targeted user!");
         }
@@ -305,7 +305,7 @@ namespace lojalBackend.Controllers
                 transaction.Rollback();
                 throw;
             }
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Ok("Password changed!");
         }
