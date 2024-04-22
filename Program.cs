@@ -1,6 +1,7 @@
 using Irony.Parsing;
 using lojalBackend.Controllers;
 using lojalBackend.DbContexts.MainContext;
+using lojalBackend.DbContexts.ShopContext;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using MySql.EntityFrameworkCore.Extensions;
 using Serilog;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
@@ -39,6 +41,10 @@ builder.Logging.AddSerilog(logger);
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddMySQLServer<LojClientDbContext>(builder.Configuration.GetConnectionString("MainConn") ?? string.Empty);
+builder.Services.AddMySQLServer<LojShopDbContext>(builder.Configuration.GetConnectionString("ShopConn") ?? string.Empty);
+
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1",
@@ -82,12 +88,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                 {
                     try
                     {
+                        var dbContext = context.HttpContext.RequestServices.GetRequiredService<LojClientDbContext>();
                         context.Token = LoginController.RefreshToken(
                             new DydaktykaBackend.Models.TokenModel(context.Request.Cookies["X-Access-Token"] ?? string.Empty, context.Request.Cookies["X-Refresh-Token"] ?? string.Empty),
                             builder.Configuration["Jwt:Key"] ?? string.Empty,
-                            builder.Configuration.GetConnectionString("MainConn") ?? "",
                             builder.Configuration["Jwt:Issuer"] ?? string.Empty,
-                            builder.Configuration["Jwt:Audience"] ?? string.Empty
+                            builder.Configuration["Jwt:Audience"] ?? string.Empty,
+                            dbContext
                             );
                     }
                     catch(Exception err)
@@ -127,7 +134,7 @@ builder.Services.AddTransient<IActionContextAccessor, ActionContextAccessor>();
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("IsLoggedIn", policy => policy.AddRequirements(new lojalBackend.RefreshRequirement(builder.Configuration.GetConnectionString("MainConn") ?? "")));
+    options.AddPolicy("IsLoggedIn", policy => policy.AddRequirements(new lojalBackend.RefreshRequirement()));
 });
 
 builder.Services.AddSingleton<IAuthorizationHandler, lojalBackend.RefreshRequirementHandler>();

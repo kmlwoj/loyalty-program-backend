@@ -1,5 +1,6 @@
 ﻿using DydaktykaBackend.Models;
 using lojalBackend.DbContexts.MainContext;
+using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -13,13 +14,15 @@ namespace lojalBackend.Controllers
     {
         private readonly ILogger<UserController> _logger;
         private readonly IConfiguration _configuration;
-        private readonly string? ConnStr;
+        private readonly LojClientDbContext clientDbContext;
+        private readonly LojShopDbContext shopDbContext;
 
-        public UserController(ILogger<UserController> logger, IConfiguration configuration)
+        public UserController(ILogger<UserController> logger, IConfiguration configuration, LojClientDbContext clientDbContext, LojShopDbContext shopDbContext)
         {
             _logger = logger;
             _configuration = configuration;
-            ConnStr = configuration.GetConnectionString("MainConn");
+            this.clientDbContext = clientDbContext;
+            this.shopDbContext = shopDbContext;
         }
         /// <summary>
         /// Registers new user (with manager privileges)
@@ -40,48 +43,46 @@ namespace lojalBackend.Controllers
             if (user.AccountType.Equals(AccountTypes.Administrator))
                 return BadRequest("You cannot create administrator accounts!");
 
-            using (LojClientDbContext db = new(ConnStr))
+            User? dbUser = await clientDbContext.Users.FindAsync(user.Username);
+            if (dbUser != null)
+                return BadRequest("Username is taken!");
+            string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+            DbContexts.MainContext.Organization? dbOrg = await clientDbContext.Organizations.FindAsync(organization);
+            if (dbOrg == null)
+                return NotFound("Given organization not found in the system!");
+
+            byte[] salt = user.EncryptPassword();
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
             {
-                User? dbUser = await db.Users.FindAsync(user.Username);
-                if (dbUser != null)
-                    return BadRequest("Username is taken!");
-                string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
-                Organization? dbOrg = await db.Organizations.FindAsync(organization);
-                if (dbOrg == null)
-                    return NotFound("Given organization not found in the system!");
-
-                byte[] salt = user.EncryptPassword();
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
+                User newUser = new()
                 {
-                    User newUser = new()
-                    {
-                        Login = user.Username,
-                        Password = user.Password,
-                        Email = user.Email,
-                        Type = user.ConvertFromEnum(),
-                        Organization = organization ?? string.Empty,
-                        Salt = Convert.ToHexString(salt)
-                    };
-                    db.Users.Add(newUser);
+                    Login = user.Username,
+                    Password = user.Password,
+                    Email = user.Email,
+                    Type = user.ConvertFromEnum(),
+                    Organization = organization ?? string.Empty,
+                    Salt = Convert.ToHexString(salt)
+                };
+                clientDbContext.Users.Add(newUser);
 
-                    RefreshToken token = new()
-                    {
-                        Login = user.Username
-                    };
-                    db.RefreshTokens.Add(token);
-
-                    await db.SaveChangesAsync();
-
-                    transaction.Commit();
-                }
-                catch
+                RefreshToken token = new()
                 {
-                    transaction.Rollback();
-                    throw;
-                }
+                    Login = user.Username
+                };
+                clientDbContext.RefreshTokens.Add(token);
+
+                await clientDbContext.SaveChangesAsync();
+
+                transaction.Commit();
             }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+
             return Ok("User successfully added!");
         }
         /// <summary>
@@ -99,18 +100,16 @@ namespace lojalBackend.Controllers
             List<UserDbModel> users = new();
             string? localOrganization = organization is null ? HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value : organization;
 
-            using (LojClientDbContext db = new(ConnStr))
-            {
-                Organization? dbOrg = await db.Organizations.FindAsync(localOrganization);
-                if (dbOrg == null)
-                    return NotFound("Given organization not found in the system!");
+            DbContexts.MainContext.Organization? dbOrg = await clientDbContext.Organizations.FindAsync(localOrganization);
+            if (dbOrg == null)
+                return NotFound("Given organization not found in the system!");
 
-                var dbUsers = db.Users.Where(x => x.Organization.Equals(localOrganization));
-                foreach (var user in dbUsers)
-                {
-                    users.Add(new(user.Login, user.Email, UserModel.ConvertToEnum(user.Type), user.Credits ?? 0, user.LatestUpdate));
-                }
+            var dbUsers = clientDbContext.Users.Where(x => x.Organization.Equals(localOrganization));
+            foreach (var user in dbUsers)
+            {
+                users.Add(new(user.Login, user.Email, UserModel.ConvertToEnum(user.Type), user.Credits ?? 0, user.LatestUpdate));
             }
+
             return new JsonResult(users);
         }
         /// <summary>
@@ -127,37 +126,36 @@ namespace lojalBackend.Controllers
                 if (!user.Login.Equals(username))
                     return BadRequest("Worker cannot change data of another user!");
             }
-            using (LojClientDbContext db = new(ConnStr))
+            
+            User? editedUser = await clientDbContext.Users.FindAsync(user.Login);
+
+            if (editedUser == null)
+                return NotFound("User with the given login does not exist!");
+
+            if (HttpContext.User.IsInRole("Manager"))
             {
-                User? editedUser = await db.Users.FindAsync(user.Login);
-
-                if (editedUser == null)
-                    return NotFound("User with the given login does not exist!");
-
-                if (HttpContext.User.IsInRole("Manager"))
-                {
-                    string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
-                    if (organization == null)
-                        return BadRequest("Organization not given in the user credentials!");
-                    if (!organization.Equals(editedUser?.Organization))
-                        return BadRequest("Manager cannot change data of users from another organization!");
-                }
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
-                {
-                    editedUser.Email = user.Email;
-                    editedUser.LatestUpdate = DateTime.UtcNow;
-                    db.Update(editedUser);
-                    await db.SaveChangesAsync();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                transaction.Commit();
+                string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+                if (organization == null)
+                    return BadRequest("Organization not given in the user credentials!");
+                if (!organization.Equals(editedUser?.Organization))
+                    return BadRequest("Manager cannot change data of users from another organization!");
             }
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
+            {
+                editedUser.Email = user.Email;
+                editedUser.LatestUpdate = DateTime.UtcNow;
+                clientDbContext.Update(editedUser);
+                await clientDbContext.SaveChangesAsync();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+            transaction.Commit();
+
             return Ok("User mail updated!");
         }
         /// <summary>
@@ -168,44 +166,42 @@ namespace lojalBackend.Controllers
         [HttpDelete("DeleteUser")]
         public async Task<IActionResult> DeleteUser([FromBody] UserDbModel user)
         {
-            using (LojClientDbContext db = new(ConnStr))
+            User? tmpUser = await clientDbContext.Users.FindAsync(user.Login);
+
+            if (tmpUser == null)
+                return NotFound("User with the given login does not exist!");
+
+            if (HttpContext.User.IsInRole("Manager"))
             {
-                User? tmpUser = await db.Users.FindAsync(user.Login);
-
-                if (tmpUser == null)
-                    return NotFound("User with the given login does not exist!");
-
-                if (HttpContext.User.IsInRole("Manager"))
-                {
-                    string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
-                    if (organization == null)
-                        return BadRequest("Organization not given in the user credentials!");
-                    if (!organization.Equals(tmpUser?.Organization))
-                        return BadRequest("Manager cannot delete user from another organization!");
-                }
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
-                {
-                    RefreshToken? token = await db.RefreshTokens.FindAsync(tmpUser.Login);
-                    if(token != null)
-                        db.RefreshTokens.Remove(token);
-
-                    var transactions = db.Transactions.Where(x => tmpUser.Login.Equals(x.Login));
-                    if(transactions != null)
-                        db.Transactions.RemoveRange(transactions);
-
-                    db.Users.Remove(tmpUser);
-
-                    await db.SaveChangesAsync();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                transaction.Commit();
+                string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+                if (organization == null)
+                    return BadRequest("Organization not given in the user credentials!");
+                if (!organization.Equals(tmpUser?.Organization))
+                    return BadRequest("Manager cannot delete user from another organization!");
             }
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
+            {
+                RefreshToken? token = await clientDbContext.RefreshTokens.FindAsync(tmpUser.Login);
+                if(token != null)
+                    clientDbContext.RefreshTokens.Remove(token);
+
+                var transactions = clientDbContext.Transactions.Where(x => tmpUser.Login.Equals(x.Login));
+                if(transactions != null)
+                    clientDbContext.Transactions.RemoveRange(transactions);
+
+                clientDbContext.Users.Remove(tmpUser);
+
+                await clientDbContext.SaveChangesAsync();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+            transaction.Commit();
+
             return Ok("User deleted!");
         }
         /// <summary>
@@ -217,46 +213,44 @@ namespace lojalBackend.Controllers
         [HttpPost("ChangeCredits/{amount:int}")]
         public async Task<IActionResult> ChangeCredits([FromBody] string login, int amount)
         {
-            using (LojClientDbContext db = new(ConnStr))
+            User? dbUser = await clientDbContext.Users.FindAsync(login);
+
+            if (dbUser == null)
+                return NotFound("User with the given login was not found in the system!");
+
+            if (HttpContext.User.IsInRole("Manager"))
             {
-                User? dbUser = await db.Users.FindAsync(login);
-
-                if (dbUser == null)
-                    return NotFound("User with the given login was not found in the system!");
-
-                if (HttpContext.User.IsInRole("Manager"))
-                {
-                    string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
-                    if (organization == null)
-                        return BadRequest("Organization not given in the user credentials!");
-                    if (!organization.Equals(dbUser?.Organization))
-                        return BadRequest("Manager cannot manage user from another organization!");
-                }
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
-                {
-                    if(amount < 0)
-                    {
-                        if(dbUser.Credits <= Math.Abs(amount))
-                            dbUser.Credits = 0;
-                    }
-                    else
-                    {
-                        dbUser.Credits ??= 0;
-                        dbUser.Credits += amount;
-                    }
-                    dbUser.LatestUpdate = DateTime.UtcNow;
-                    db.Update(dbUser);
-                    await db.SaveChangesAsync();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                transaction.Commit();
+                string? organization = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+                if (organization == null)
+                    return BadRequest("Organization not given in the user credentials!");
+                if (!organization.Equals(dbUser?.Organization))
+                    return BadRequest("Manager cannot manage user from another organization!");
             }
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
+            {
+                if(amount < 0)
+                {
+                    if(dbUser.Credits <= Math.Abs(amount))
+                        dbUser.Credits = 0;
+                }
+                else
+                {
+                    dbUser.Credits ??= 0;
+                    dbUser.Credits += amount;
+                }
+                dbUser.LatestUpdate = DateTime.UtcNow;
+                clientDbContext.Update(dbUser);
+                await clientDbContext.SaveChangesAsync();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+            transaction.Commit();
+
             return Ok("Credits changed for the targeted user!");
         }
         /// <summary>
@@ -274,47 +268,45 @@ namespace lojalBackend.Controllers
             if (string.IsNullOrEmpty(username))
                 return BadRequest("Username in auth token is empty!");
 
-            using (LojClientDbContext db = new(ConnStr))
+            User? dbUser = await clientDbContext.Users.FindAsync(username);
+            LoginModel tmpUser = new(username, password);
+            string salt = string.Empty;
+            AdminUserModel? userModel = null;
+            if (dbUser != null)
             {
-                User? dbUser = await db.Users.FindAsync(username);
-                LoginModel tmpUser = new(username, password);
-                string salt = string.Empty;
-                AdminUserModel? userModel = null;
+                userModel = new(
+                                dbUser.Login,
+                                dbUser.Password,
+                                UserModel.ConvertToEnum(dbUser.Type),
+                                dbUser.Email,
+                                dbUser.Organization
+                            );
+                salt = dbUser.Salt;
+            }
+            if (userModel != null && userModel.VerifyPassword(tmpUser.GetSecurePassword(), salt))
+                return BadRequest("New password cannot be the same as the old one!");
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
+            {
+                UserModel newPasswordUser = new(username, password);
+                byte[] newSalt = newPasswordUser.EncryptPassword();
                 if (dbUser != null)
                 {
-                    userModel = new(
-                                    dbUser.Login,
-                                    dbUser.Password,
-                                    UserModel.ConvertToEnum(dbUser.Type),
-                                    dbUser.Email,
-                                    dbUser.Organization
-                                );
-                    salt = dbUser.Salt;
+                    dbUser.Password = newPasswordUser.Password;
+                    dbUser.Salt = Convert.ToHexString(newSalt);
+                    dbUser.LatestUpdate = DateTime.UtcNow;
+                    clientDbContext.Update(dbUser);
                 }
-                if (userModel != null && userModel.VerifyPassword(tmpUser.GetSecurePassword(), salt))
-                    return BadRequest("New password cannot be the same as the old one!");
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
-                {
-                    UserModel newPasswordUser = new(username, password);
-                    byte[] newSalt = newPasswordUser.EncryptPassword();
-                    if (dbUser != null)
-                    {
-                        dbUser.Password = newPasswordUser.Password;
-                        dbUser.Salt = Convert.ToHexString(newSalt);
-                        dbUser.LatestUpdate = DateTime.UtcNow;
-                        db.Update(dbUser);
-                    }
-                    await db.SaveChangesAsync();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                transaction.Commit();
+                await clientDbContext.SaveChangesAsync();
             }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+            transaction.Commit();
+
             return Ok("Password changed!");
         }
     }

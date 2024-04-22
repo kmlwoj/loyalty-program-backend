@@ -1,5 +1,6 @@
 ﻿using DydaktykaBackend.Models;
 using lojalBackend.DbContexts.MainContext;
+using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,13 +20,15 @@ namespace lojalBackend.Controllers
     {
         private readonly ILogger<LoginController> _logger;
         private readonly IConfiguration _configuration;
-        private readonly string? ConnStr;
+        private readonly LojClientDbContext clientDbContext;
+        private readonly LojShopDbContext shopDbContext;
 
-        public LoginController(ILogger<LoginController> logger, IConfiguration configuration)
+        public LoginController(ILogger<LoginController> logger, IConfiguration configuration, LojClientDbContext clientDbContext, LojShopDbContext shopDbContext)
         {
             _logger = logger;
             _configuration = configuration;
-            ConnStr = configuration.GetConnectionString("MainConn");
+            this.clientDbContext = clientDbContext;
+            this.shopDbContext = shopDbContext;
         }
         /// <summary>
         /// Logs in a given user
@@ -43,27 +46,24 @@ namespace lojalBackend.Controllers
                 var tokenString = GenerateJSONWebToken(authenticatedUser);
                 var refreshToken = GenerateRefreshToken();
 
-                using (LojClientDbContext db = new(ConnStr))
+                var transaction = await clientDbContext.Database.BeginTransactionAsync();
+                try
                 {
-                    var transaction = await db.Database.BeginTransactionAsync();
-                    try
+                    RefreshToken? entry = await clientDbContext.RefreshTokens.FirstOrDefaultAsync(x => user.Username.Equals(x.Login));
+                    if(entry != null)
                     {
-                        RefreshToken? entry = await db.RefreshTokens.FirstOrDefaultAsync(x => user.Username.Equals(x.Login));
-                        if(entry != null)
-                        {
-                            entry.Token = refreshToken;
-                            entry.Expiry = DateTime.Now.AddDays(1);
-                            db.Update(entry);
-                            await db.SaveChangesAsync();
-                        }
+                        entry.Token = refreshToken;
+                        entry.Expiry = DateTime.Now.AddDays(1);
+                        clientDbContext.Update(entry);
+                        await clientDbContext.SaveChangesAsync();
                     }
-                    catch
-                    {
-                        transaction.Rollback();
-                        throw;
-                    }
-                    transaction.Commit();
                 }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                transaction.Commit();
 
                 string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
                 var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
@@ -98,47 +98,45 @@ namespace lojalBackend.Controllers
             if (string.IsNullOrEmpty(user.Email))
                 return BadRequest("Email was not supplied");
 
-            using (LojClientDbContext db = new(ConnStr))
+            User? dbUser = await clientDbContext.Users.FindAsync(user.Username);
+            if (dbUser != null)
+                return BadRequest("Username is taken!");
+            DbContexts.MainContext.Organization? dbOrg = await clientDbContext.Organizations.FindAsync(user.OrganizationName);
+            if (dbOrg == null)
+                return NotFound("Given organization not found in the system!");
+
+            byte[] salt = user.EncryptPassword();
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
             {
-                User? dbUser = await db.Users.FindAsync(user.Username);
-                if (dbUser != null)
-                    return BadRequest("Username is taken!");
-                Organization? dbOrg = await db.Organizations.FindAsync(user.OrganizationName);
-                if (dbOrg == null)
-                    return NotFound("Given organization not found in the system!");
-
-                byte[] salt = user.EncryptPassword();
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
+                User newUser = new()
                 {
-                    User newUser = new()
-                    {
-                        Login = user.Username,
-                        Password = user.Password,
-                        Email = user.Email,
-                        Type = user.ConvertFromEnum(),
-                        Organization = user.OrganizationName,
-                        Salt = Convert.ToHexString(salt)
-                    };
-                    db.Users.Add(newUser);
+                    Login = user.Username,
+                    Password = user.Password,
+                    Email = user.Email,
+                    Type = user.ConvertFromEnum(),
+                    Organization = user.OrganizationName,
+                    Salt = Convert.ToHexString(salt)
+                };
+                clientDbContext.Users.Add(newUser);
 
-                    RefreshToken token = new()
-                    {
-                        Login = user.Username
-                    };
-                    db.RefreshTokens.Add(token);
-
-                    await db.SaveChangesAsync();
-
-                    transaction.Commit();
-                }
-                catch
+                RefreshToken token = new()
                 {
-                    transaction.Rollback();
-                    throw;
-                }
+                    Login = user.Username
+                };
+                clientDbContext.RefreshTokens.Add(token);
+
+                await clientDbContext.SaveChangesAsync();
+
+                transaction.Commit();
             }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+
             return Ok("User successfully added!");
         }
         /// <summary>
@@ -148,32 +146,30 @@ namespace lojalBackend.Controllers
         [HttpGet("Logout")]
         public async Task<IActionResult> Logout()
         {
-            using (LojClientDbContext db = new(ConnStr))
+            Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
+
+            if (login == null)
+                return Unauthorized("User does not have name identifier claim!");
+
+            var transaction = await clientDbContext.Database.BeginTransactionAsync();
+            try
             {
-                Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
-
-                if (login == null)
-                    return Unauthorized("User does not have name identifier claim!");
-
-                var transaction = await db.Database.BeginTransactionAsync();
-                try
+                RefreshToken? token = await clientDbContext.RefreshTokens.FirstOrDefaultAsync(x => login.Value.Equals(x.Login));
+                if (token != null)
                 {
-                    RefreshToken? token = await db.RefreshTokens.FirstOrDefaultAsync(x => login.Value.Equals(x.Login));
-                    if (token != null)
-                    {
-                        token.Token = null;
-                        token.Expiry = null;
-                        db.Update(token);
-                        await db.SaveChangesAsync();
-                    }
-                    transaction.Commit();
+                    token.Token = null;
+                    token.Expiry = null;
+                    clientDbContext.Update(token);
+                    await clientDbContext.SaveChangesAsync();
                 }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                transaction.Commit();
             }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+
             var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
             cookieOpt.Extensions.Add("Partitioned");
             foreach (var cookie in HttpContext.Request.Cookies)
@@ -196,7 +192,7 @@ namespace lojalBackend.Controllers
 
             return Ok($"The user is logged in.\n{login.Value}");
         }
-        public static string RefreshToken(TokenModel tokens, string JWTKey, string ConnStr, string JWTIssuer, string JWTAudience)
+        public static string RefreshToken(TokenModel tokens, string JWTKey, string JWTIssuer, string JWTAudience, LojClientDbContext db)
         {
             if (tokens == null)
                 throw new Exception("Invalid request! No tokens were found.");
@@ -214,14 +210,11 @@ namespace lojalBackend.Controllers
 
             string? dbToken = null;
             DateTime? expiry = null;
-            using (LojClientDbContext db = new(ConnStr))
+            RefreshToken? token = db.RefreshTokens.FirstOrDefault(x => username.Equals(x.Login));
+            if (token != null)
             {
-                RefreshToken? token = db.RefreshTokens.FirstOrDefault(x => username.Equals(x.Login));
-                if(token != null)
-                {
-                    dbToken = token.Token;
-                    expiry = token.Expiry;
-                }
+                dbToken = token.Token;
+                expiry = token.Expiry;
             }
 
             if (tokens.RefreshToken != dbToken)
@@ -280,23 +273,20 @@ namespace lojalBackend.Controllers
             AdminUserModel? userModel = null;
             string salt = "";
 
-            using (LojClientDbContext db = new(ConnStr))
+            User? dbUser = await clientDbContext.Users.FindAsync(user.Username);
+            if (dbUser != null)
             {
-                User? dbUser = await db.Users.FindAsync(user.Username);
-                if (dbUser != null)
+                userModel = new AdminUserModel(
+                            dbUser.Login,
+                            dbUser.Password,
+                            UserModel.ConvertToEnum(dbUser.Type),
+                            dbUser.Email,
+                            dbUser.Organization
+                        );
+                salt = dbUser.Salt;
+                if (string.IsNullOrEmpty(salt))
                 {
-                    userModel = new AdminUserModel(
-                                dbUser.Login,
-                                dbUser.Password,
-                                UserModel.ConvertToEnum(dbUser.Type),
-                                dbUser.Email,
-                                dbUser.Organization
-                            );
-                    salt = dbUser.Salt;
-                    if (string.IsNullOrEmpty(salt))
-                    {
-                        return null;
-                    }
+                    return null;
                 }
             }
 
