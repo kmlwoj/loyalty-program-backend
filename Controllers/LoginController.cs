@@ -63,7 +63,7 @@ namespace lojalBackend.Controllers
                     transaction.Rollback();
                     throw;
                 }
-                transaction.Commit();
+                await transaction.CommitAsync();
 
                 string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
                 var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
@@ -129,7 +129,7 @@ namespace lojalBackend.Controllers
 
                 await clientDbContext.SaveChangesAsync();
 
-                transaction.Commit();
+                await transaction.CommitAsync();
             }
             catch
             {
@@ -162,7 +162,7 @@ namespace lojalBackend.Controllers
                     clientDbContext.Update(token);
                     await clientDbContext.SaveChangesAsync();
                 }
-                transaction.Commit();
+                await transaction.CommitAsync();
             }
             catch
             {
