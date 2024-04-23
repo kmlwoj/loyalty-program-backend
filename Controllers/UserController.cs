@@ -53,34 +53,35 @@ namespace lojalBackend.Controllers
 
             byte[] salt = user.EncryptPassword();
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                User newUser = new()
+                try
                 {
-                    Login = user.Username,
-                    Password = user.Password,
-                    Email = user.Email,
-                    Type = user.ConvertFromEnum(),
-                    Organization = organization ?? string.Empty,
-                    Salt = Convert.ToHexString(salt)
-                };
-                clientDbContext.Users.Add(newUser);
+                    User newUser = new()
+                    {
+                        Login = user.Username,
+                        Password = user.Password,
+                        Email = user.Email,
+                        Type = user.ConvertFromEnum(),
+                        Organization = organization ?? string.Empty,
+                        Salt = Convert.ToHexString(salt)
+                    };
+                    clientDbContext.Users.Add(newUser);
 
-                RefreshToken token = new()
+                    RefreshToken token = new()
+                    {
+                        Login = user.Username
+                    };
+                    clientDbContext.RefreshTokens.Add(token);
+
+                    await clientDbContext.SaveChangesAsync();
+                }
+                catch
                 {
-                    Login = user.Username
-                };
-                clientDbContext.RefreshTokens.Add(token);
-
-                await clientDbContext.SaveChangesAsync();
-
+                    transaction.Rollback();
+                    throw;
+                }
                 await transaction.CommitAsync();
-            }
-            catch
-            {
-                transaction.Rollback();
-                throw;
             }
 
             return Ok("User successfully added!");
@@ -141,20 +142,22 @@ namespace lojalBackend.Controllers
                     return BadRequest("Manager cannot change data of users from another organization!");
             }
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                editedUser.Email = user.Email;
-                editedUser.LatestUpdate = DateTime.UtcNow;
-                clientDbContext.Update(editedUser);
-                await clientDbContext.SaveChangesAsync();
+                try
+                {
+                    editedUser.Email = user.Email;
+                    editedUser.LatestUpdate = DateTime.UtcNow;
+                    clientDbContext.Update(editedUser);
+                    await clientDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
             }
-            catch
-            {
-                transaction.Rollback();
-                throw;
-            }
-            await transaction.CommitAsync();
 
             return Ok("User mail updated!");
         }
@@ -180,27 +183,29 @@ namespace lojalBackend.Controllers
                     return BadRequest("Manager cannot delete user from another organization!");
             }
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                RefreshToken? token = await clientDbContext.RefreshTokens.FindAsync(tmpUser.Login);
-                if(token != null)
-                    clientDbContext.RefreshTokens.Remove(token);
+                try
+                {
+                    RefreshToken? token = await clientDbContext.RefreshTokens.FindAsync(tmpUser.Login);
+                    if (token != null)
+                        clientDbContext.RefreshTokens.Remove(token);
 
-                var transactions = clientDbContext.Transactions.Where(x => tmpUser.Login.Equals(x.Login));
-                if(transactions != null)
-                    clientDbContext.Transactions.RemoveRange(transactions);
+                    var transactions = clientDbContext.Transactions.Where(x => tmpUser.Login.Equals(x.Login));
+                    if (transactions != null)
+                        clientDbContext.Transactions.RemoveRange(transactions);
 
-                clientDbContext.Users.Remove(tmpUser);
+                    clientDbContext.Users.Remove(tmpUser);
 
-                await clientDbContext.SaveChangesAsync();
+                    await clientDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
             }
-            catch
-            {
-                transaction.Rollback();
-                throw;
-            }
-            await transaction.CommitAsync();
 
             return Ok("User deleted!");
         }
@@ -227,29 +232,31 @@ namespace lojalBackend.Controllers
                     return BadRequest("Manager cannot manage user from another organization!");
             }
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                if(amount < 0)
+                try
                 {
-                    if(dbUser.Credits <= Math.Abs(amount))
-                        dbUser.Credits = 0;
+                    if (amount < 0)
+                    {
+                        if (dbUser.Credits <= Math.Abs(amount))
+                            dbUser.Credits = 0;
+                    }
+                    else
+                    {
+                        dbUser.Credits ??= 0;
+                        dbUser.Credits += amount;
+                    }
+                    dbUser.LatestUpdate = DateTime.UtcNow;
+                    clientDbContext.Update(dbUser);
+                    await clientDbContext.SaveChangesAsync();
                 }
-                else
+                catch
                 {
-                    dbUser.Credits ??= 0;
-                    dbUser.Credits += amount;
+                    transaction.Rollback();
+                    throw;
                 }
-                dbUser.LatestUpdate = DateTime.UtcNow;
-                clientDbContext.Update(dbUser);
-                await clientDbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
             }
-            catch
-            {
-                transaction.Rollback();
-                throw;
-            }
-            await transaction.CommitAsync();
 
             return Ok("Credits changed for the targeted user!");
         }
@@ -286,26 +293,28 @@ namespace lojalBackend.Controllers
             if (userModel != null && userModel.VerifyPassword(tmpUser.GetSecurePassword(), salt))
                 return BadRequest("New password cannot be the same as the old one!");
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                UserModel newPasswordUser = new(username, password);
-                byte[] newSalt = newPasswordUser.EncryptPassword();
-                if (dbUser != null)
+                try
                 {
-                    dbUser.Password = newPasswordUser.Password;
-                    dbUser.Salt = Convert.ToHexString(newSalt);
-                    dbUser.LatestUpdate = DateTime.UtcNow;
-                    clientDbContext.Update(dbUser);
+                    UserModel newPasswordUser = new(username, password);
+                    byte[] newSalt = newPasswordUser.EncryptPassword();
+                    if (dbUser != null)
+                    {
+                        dbUser.Password = newPasswordUser.Password;
+                        dbUser.Salt = Convert.ToHexString(newSalt);
+                        dbUser.LatestUpdate = DateTime.UtcNow;
+                        clientDbContext.Update(dbUser);
+                    }
+                    await clientDbContext.SaveChangesAsync();
                 }
-                await clientDbContext.SaveChangesAsync();
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
             }
-            catch
-            {
-                transaction.Rollback();
-                throw;
-            }
-            await transaction.CommitAsync();
 
             return Ok("Password changed!");
         }
