@@ -60,41 +60,48 @@ namespace lojalBackend.Controllers
 
             if (OrgTypes.Shop.Equals(organization.Type))
             {
-                var transaction = await shopDbContext.Database.BeginTransactionAsync();
-                try
+                using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
+                using(var shopTransaction = await shopDbContext.Database.BeginTransactionAsync())
                 {
-                    DbContexts.ShopContext.Organization shopOrg = new()
+                    try
                     {
-                        Name = organization.Name
-                    };
-                    shopDbContext.Organizations.Add(shopOrg);
-                    clientDbContext.Organizations.Add(checkOrg);
+                        DbContexts.ShopContext.Organization shopOrg = new()
+                        {
+                            Name = organization.Name
+                        };
+                        shopDbContext.Organizations.Add(shopOrg);
+                        clientDbContext.Organizations.Add(checkOrg);
 
-                    await shopDbContext.SaveChangesAsync();
-                    await clientDbContext.SaveChangesAsync();
+                        await shopDbContext.SaveChangesAsync();
+                        await clientDbContext.SaveChangesAsync();
+                    }
+                    catch
+                    {
+                        clientTransaction.Rollback();
+                        shopTransaction.Rollback();
+                        throw;
+                    }
+                    await clientTransaction.CommitAsync();
+                    await shopTransaction.CommitAsync();
                 }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                await transaction.CommitAsync();
             }
             else if(OrgTypes.Client.Equals(organization.Type))
             {
-                var transaction = await shopDbContext.Database.BeginTransactionAsync();
-                try
+                using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
                 {
-                    clientDbContext.Organizations.Add(checkOrg);
+                    try
+                    {
+                        clientDbContext.Organizations.Add(checkOrg);
 
-                    await clientDbContext.SaveChangesAsync();
+                        await clientDbContext.SaveChangesAsync();
+                    }
+                    catch
+                    {
+                        transaction.Rollback();
+                        throw;
+                    }
+                    await transaction.CommitAsync();
                 }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                await transaction.CommitAsync();
             }
             else
             {
@@ -112,76 +119,78 @@ namespace lojalBackend.Controllers
             DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(organization);
             if (checkOrg == null)
                 return NotFound("Requested organization was not found in the system!");
-            var shopTransaction = await shopDbContext.Database.BeginTransactionAsync();
-            var clientTransaciton = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var shopTransaction = await shopDbContext.Database.BeginTransactionAsync())
+            using (var clientTransaciton = await clientDbContext.Database.BeginTransactionAsync())
             {
-                Task shopTask = Task.Run(async () =>
+                try
                 {
-                    foreach(var offer in await shopDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
+                    Task shopTask = Task.Run(async () =>
                     {
-                        var discounts = shopDbContext.Discounts.Where(x => offer.OfferId.Equals(x.OfferId));
-                        if (discounts != null)
-                            shopDbContext.Discounts.RemoveRange(discounts);
+                        foreach (var offer in await shopDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
+                        {
+                            var discounts = shopDbContext.Discounts.Where(x => offer.OfferId.Equals(x.OfferId));
+                            if (discounts != null)
+                                shopDbContext.Discounts.RemoveRange(discounts);
 
-                        var codes = shopDbContext.Codes.Where(x => offer.OfferId.Equals(x.OfferId));
-                        if(codes != null) 
-                            shopDbContext.Codes.RemoveRange(codes);
+                            var codes = shopDbContext.Codes.Where(x => offer.OfferId.Equals(x.OfferId));
+                            if (codes != null)
+                                shopDbContext.Codes.RemoveRange(codes);
 
-                        shopDbContext.Offers.Remove(offer);
-                    }
-                    DbContexts.ShopContext.Organization? shopOrg = await shopDbContext.Organizations.FindAsync(organization);
-                    if(shopOrg != null)
-                        shopDbContext.Organizations.Remove(shopOrg);
+                            shopDbContext.Offers.Remove(offer);
+                        }
+                        DbContexts.ShopContext.Organization? shopOrg = await shopDbContext.Organizations.FindAsync(organization);
+                        if (shopOrg != null)
+                            shopDbContext.Organizations.Remove(shopOrg);
 
-                    await shopDbContext.SaveChangesAsync();
-                });
-                Task clientTask = Task.Run(async () =>
+                        await shopDbContext.SaveChangesAsync();
+                    });
+                    Task clientTask = Task.Run(async () =>
+                    {
+                        var users = await clientDbContext.Users.Where(x => organization.Equals(x.Organization)).ToListAsync();
+
+                        foreach (var user in users)
+                        {
+                            RefreshToken? token = await clientDbContext.RefreshTokens.FindAsync(user.Login);
+                            if (token != null)
+                                clientDbContext.RefreshTokens.Remove(token);
+                        }
+
+                        var transactions = clientDbContext.Transactions.Where(x => organization.Equals(x.Shop));
+                        if (transactions != null)
+                            clientDbContext.Transactions.RemoveRange(transactions);
+
+                        if (users != null)
+                            clientDbContext.Users.RemoveRange(users);
+
+                        foreach (var offer in await clientDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
+                        {
+                            var discounts = clientDbContext.Discounts.Where(x => offer.OfferId.Equals(x.OfferId));
+                            if (discounts != null)
+                                clientDbContext.Discounts.RemoveRange(discounts);
+
+                            var codes = clientDbContext.Codes.Where(x => offer.OfferId.Equals(x.OfferId));
+                            if (codes != null)
+                                clientDbContext.Codes.RemoveRange(codes);
+
+                            clientDbContext.Offers.Remove(offer);
+                        }
+                        DbContexts.MainContext.Organization? clientOrg = await clientDbContext.Organizations.FindAsync(organization);
+                        if (clientOrg != null)
+                            clientDbContext.Organizations.Remove(clientOrg);
+
+                        await clientDbContext.SaveChangesAsync();
+                    });
+                    await Task.WhenAll(shopTask, clientTask);
+                }
+                catch
                 {
-                    var users = await clientDbContext.Users.Where(x => organization.Equals(x.Organization)).ToListAsync();
-
-                    foreach (var user in users)
-                    {
-                        RefreshToken? token = await clientDbContext.RefreshTokens.FindAsync(user.Login);
-                        if (token != null)
-                            clientDbContext.RefreshTokens.Remove(token);
-                    }
-
-                    var transactions = clientDbContext.Transactions.Where(x => organization.Equals(x.Shop));
-                    if(transactions != null)
-                        clientDbContext.Transactions.RemoveRange(transactions);
-
-                    if (users != null)
-                        clientDbContext.Users.RemoveRange(users);
-
-                    foreach (var offer in await clientDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
-                    {
-                        var discounts = clientDbContext.Discounts.Where(x => offer.OfferId.Equals(x.OfferId));
-                        if (discounts != null)
-                            clientDbContext.Discounts.RemoveRange(discounts);
-
-                        var codes = clientDbContext.Codes.Where(x => offer.OfferId.Equals(x.OfferId));
-                        if(codes != null) 
-                            clientDbContext.Codes.RemoveRange(codes);
-
-                        clientDbContext.Offers.Remove(offer);
-                    }
-                    DbContexts.MainContext.Organization? clientOrg = await clientDbContext.Organizations.FindAsync(organization);
-                    if (clientOrg != null)
-                        clientDbContext.Organizations.Remove(clientOrg);
-
-                    await clientDbContext.SaveChangesAsync();
-                });
-                await Task.WhenAll(shopTask, clientTask);
+                    shopTransaction.Rollback();
+                    clientTransaciton.Rollback();
+                    throw;
+                }
+                await shopTransaction.CommitAsync();
+                await clientTransaciton.CommitAsync();
             }
-            catch
-            {
-                shopTransaction.Rollback();
-                clientTransaciton.Rollback();
-                throw;
-            }
-            await shopTransaction.CommitAsync();
-            await clientTransaciton.CommitAsync();
             return Ok("Organization deleted!");
         }
     }

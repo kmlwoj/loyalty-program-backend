@@ -46,24 +46,26 @@ namespace lojalBackend.Controllers
                 var tokenString = GenerateJSONWebToken(authenticatedUser);
                 var refreshToken = GenerateRefreshToken();
 
-                var transaction = await clientDbContext.Database.BeginTransactionAsync();
-                try
+                using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
                 {
-                    RefreshToken? entry = await clientDbContext.RefreshTokens.FirstOrDefaultAsync(x => user.Username.Equals(x.Login));
-                    if(entry != null)
+                    try
                     {
-                        entry.Token = refreshToken;
-                        entry.Expiry = DateTime.Now.AddDays(1);
-                        clientDbContext.Update(entry);
-                        await clientDbContext.SaveChangesAsync();
+                        RefreshToken? entry = await clientDbContext.RefreshTokens.FirstOrDefaultAsync(x => user.Username.Equals(x.Login));
+                        if (entry != null)
+                        {
+                            entry.Token = refreshToken;
+                            entry.Expiry = DateTime.Now.AddDays(1);
+                            clientDbContext.Update(entry);
+                            await clientDbContext.SaveChangesAsync();
+                        }
                     }
+                    catch
+                    {
+                        transaction.Rollback();
+                        throw;
+                    }
+                    await transaction.CommitAsync();
                 }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-                await transaction.CommitAsync();
 
                 string[] keys = { "X-Access-Token", "X-Username", "X-Refresh-Token" };
                 var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
@@ -107,34 +109,35 @@ namespace lojalBackend.Controllers
 
             byte[] salt = user.EncryptPassword();
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                User newUser = new()
+                try
                 {
-                    Login = user.Username,
-                    Password = user.Password,
-                    Email = user.Email,
-                    Type = user.ConvertFromEnum(),
-                    Organization = user.OrganizationName,
-                    Salt = Convert.ToHexString(salt)
-                };
-                clientDbContext.Users.Add(newUser);
+                    User newUser = new()
+                    {
+                        Login = user.Username,
+                        Password = user.Password,
+                        Email = user.Email,
+                        Type = user.ConvertFromEnum(),
+                        Organization = user.OrganizationName,
+                        Salt = Convert.ToHexString(salt)
+                    };
+                    clientDbContext.Users.Add(newUser);
 
-                RefreshToken token = new()
+                    RefreshToken token = new()
+                    {
+                        Login = user.Username
+                    };
+                    clientDbContext.RefreshTokens.Add(token);
+
+                    await clientDbContext.SaveChangesAsync();
+                }
+                catch
                 {
-                    Login = user.Username
-                };
-                clientDbContext.RefreshTokens.Add(token);
-
-                await clientDbContext.SaveChangesAsync();
-
+                    transaction.Rollback();
+                    throw;
+                }
                 await transaction.CommitAsync();
-            }
-            catch
-            {
-                transaction.Rollback();
-                throw;
             }
 
             return Ok("User successfully added!");
@@ -151,23 +154,25 @@ namespace lojalBackend.Controllers
             if (login == null)
                 return Unauthorized("User does not have name identifier claim!");
 
-            var transaction = await clientDbContext.Database.BeginTransactionAsync();
-            try
+            using (var transaction = await clientDbContext.Database.BeginTransactionAsync())
             {
-                RefreshToken? token = await clientDbContext.RefreshTokens.FirstOrDefaultAsync(x => login.Value.Equals(x.Login));
-                if (token != null)
+                try
                 {
-                    token.Token = null;
-                    token.Expiry = null;
-                    clientDbContext.Update(token);
-                    await clientDbContext.SaveChangesAsync();
+                    RefreshToken? token = await clientDbContext.RefreshTokens.FirstOrDefaultAsync(x => login.Value.Equals(x.Login));
+                    if (token != null)
+                    {
+                        token.Token = null;
+                        token.Expiry = null;
+                        clientDbContext.Update(token);
+                        await clientDbContext.SaveChangesAsync();
+                    }
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
                 }
                 await transaction.CommitAsync();
-            }
-            catch
-            {
-                transaction.Rollback();
-                throw;
             }
 
             var cookieOpt = new CookieOptions() { HttpOnly = true, SameSite = SameSiteMode.None, Secure = true };
