@@ -4,6 +4,7 @@ using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace lojalBackend.Controllers
 {
@@ -80,6 +81,53 @@ namespace lojalBackend.Controllers
             }
 
             return Ok("Added category!");
+        }
+        /// <summary>
+        /// Deletes a given category from the system
+        /// </summary>
+        /// <param name="category">Targeted category</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpDelete("DeleteCategory")]
+        public async Task<IActionResult> DeleteCategory([FromBody] string category)
+        {
+            DbContexts.ShopContext.Category? checkCat = await shopDbContext.Categories.FindAsync(category);
+            if (checkCat == null)
+                return NotFound("Category was not found in the system!");
+
+            using (var shopTransaction = await shopDbContext.Database.BeginTransactionAsync())
+            using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    var shopOffers = await shopDbContext.Offers.Where(x => category.Equals(x.Category)).ToListAsync();
+                    foreach (var offer in shopOffers)
+                    {
+                        offer.Category = null;
+                    }
+                    var clientOffers = await clientDbContext.Offers.Where(x => category.Equals(x.Category)).ToListAsync();
+                    foreach (var offer in clientOffers)
+                    {
+                        offer.Category = null;
+                    }
+                    DbContexts.MainContext.Category? clientCat = await clientDbContext.Categories.FindAsync(category);
+                    if(clientCat != null)
+                        clientDbContext.Categories.Remove(clientCat);
+                    shopDbContext.Categories.Remove(checkCat);
+
+                    await clientDbContext.SaveChangesAsync();
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    clientTransaction.Rollback();
+                    shopTransaction.Rollback();
+                    throw;
+                }
+                await clientTransaction.CommitAsync();
+                await shopTransaction.CommitAsync();
+            }
+
+            return Ok("Deleted category!");
         }
     }
 }
