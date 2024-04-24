@@ -38,5 +38,48 @@ namespace lojalBackend.Controllers
             }
             return new JsonResult(answer);
         }
+        /// <summary>
+        /// Adds new offer category to the system
+        /// </summary>
+        /// <param name="category">New category</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPost("AddCategory")]
+        public async Task<IActionResult> AddCategory([FromBody] string category)
+        {
+            DbContexts.ShopContext.Category? checkCat = await shopDbContext.Categories.FindAsync(category);
+            if (checkCat != null)
+                return BadRequest("Category already exists in the system!");
+
+            using (var shopTransaction = await shopDbContext.Database.BeginTransactionAsync())
+            using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    DbContexts.MainContext.Category clientCategory = new()
+                    { 
+                        Name = category 
+                    };
+                    clientDbContext.Categories.Add(clientCategory);
+                    DbContexts.ShopContext.Category shopCategory = new()
+                    {
+                        Name = category
+                    };
+                    shopDbContext.Categories.Add(shopCategory);
+                    
+                    await clientDbContext.SaveChangesAsync();
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    clientTransaction.Rollback();
+                    shopTransaction.Rollback();
+                    throw;
+                }
+                await clientTransaction.CommitAsync();
+                await shopTransaction.CommitAsync();
+            }
+
+            return Ok("Added category!");
+        }
     }
 }
