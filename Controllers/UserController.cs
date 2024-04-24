@@ -32,7 +32,7 @@ namespace lojalBackend.Controllers
         [HttpGet("GetCurrentUser")]
         public async Task<IActionResult> GetCurrentUser()
         {
-            string? user = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+            string? user = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("sub"))?.Value;
             User? dbUser = await clientDbContext.Users.FindAsync(user);
             UserDbModelOrg? answer = null;
             if (user != null && dbUser != null)
