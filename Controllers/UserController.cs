@@ -25,6 +25,30 @@ namespace lojalBackend.Controllers
             this.shopDbContext = shopDbContext;
         }
         /// <summary>
+        /// Retrieves information about the current user
+        /// </summary>
+        /// <returns>Current user data of UserDbModelOrg schema</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("GetCurrentUser")]
+        public async Task<IActionResult> GetCurrentUser()
+        {
+            string? user = HttpContext?.User?.Claims?.FirstOrDefault(c => c.Type.Contains("azp"))?.Value;
+            User? dbUser = await clientDbContext.Users.FindAsync(user);
+            UserDbModelOrg? answer = null;
+            if (user != null && dbUser != null)
+            {
+                answer = new(
+                    user,
+                    dbUser.Email,
+                    UserModel.ConvertToEnum(dbUser.Type),
+                    dbUser.Credits ?? 0,
+                    dbUser.LatestUpdate,
+                    dbUser.Organization
+                    );
+            }
+            return answer != null ? new JsonResult(answer) : NotFound("Credentials of the current user not found!");
+        }
+        /// <summary>
         /// Registers new user (with manager privileges)
         /// </summary>
         /// <param name="user">Object with user data</param>
