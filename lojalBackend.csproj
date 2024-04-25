@@ -39,6 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Images\Categories\" />
     <Folder Include="Logs\" />
   </ItemGroup>
 

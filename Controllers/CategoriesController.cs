@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using static lojalBackend.ImageManager;
 
 namespace lojalBackend.Controllers
 {
@@ -33,7 +34,7 @@ namespace lojalBackend.Controllers
         public async Task<IActionResult> GetCategories()
         {
             List<CategoryModel> answer = new();
-            await foreach(var entry in shopDbContext.Categories.AsAsyncEnumerable())
+            await foreach(var entry in clientDbContext.Categories.AsAsyncEnumerable())
             {
                 answer.Add(new(entry.Name));
             }
@@ -128,6 +129,34 @@ namespace lojalBackend.Controllers
             }
 
             return Ok("Deleted category!");
+        }
+        /// <summary>
+        /// Retrieves category image with the given name
+        /// </summary>
+        /// <param name="category">Category name</param>
+        /// <returns>Image with the content-type of image/{type}</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("GetCategoryImage/{category}")]
+        public async Task<IActionResult> GetCategoryImage(string category)
+        {
+            DbContexts.MainContext.Category? checkCat = await clientDbContext.Categories.FindAsync(category);
+            if (checkCat == null)
+                return NotFound("Category was not found in the system!");
+
+            try
+            {
+                string fileName = string.Concat("Categories/", category);
+                using (FileStream answer = GetFile(fileName))
+                {
+                    return File(answer, $"image/{Path.GetExtension(MakePath(fileName))[1..]}");
+                }
+            }
+            catch (Exception ex)
+            {
+                if ("File does not exist!".Equals(ex.Message))
+                    return NotFound(ex.Message);
+                throw;
+            }
         }
     }
 }

@@ -25,4 +25,5 @@ COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "lojalBackend.dll"]
 
 RUN mkdir -p /app/Images
+RUN mkdir -p /app/Images/Categories
 RUN mkdir -p /app/Logs
