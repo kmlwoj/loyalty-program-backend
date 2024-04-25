@@ -36,7 +36,8 @@ namespace lojalBackend.Controllers
             List<CategoryModel> answer = new();
             await foreach(var entry in clientDbContext.Categories.AsAsyncEnumerable())
             {
-                answer.Add(new(entry.Name));
+                string fileName = string.Concat("Categories/", entry.Name);
+                answer.Add(new(entry.Name, CheckFileExistence(fileName)));
             }
             return new JsonResult(answer);
         }
@@ -146,16 +147,60 @@ namespace lojalBackend.Controllers
             try
             {
                 string fileName = string.Concat("Categories/", category);
-                using (FileStream answer = GetFile(fileName))
-                {
-                    return File(answer, $"image/{Path.GetExtension(MakePath(fileName))[1..]}");
-                }
+                FileStream answer = GetFile(fileName);
+                return File(answer, $"image/{Path.GetExtension(answer.Name)[1..]}");
             }
             catch (Exception ex)
             {
-                if ("File does not exist!".Equals(ex.Message))
+                if ("Image does not exist!".Equals(ex.Message))
                     return NotFound(ex.Message);
                 throw;
+            }
+        }
+        /// <summary>
+        /// Saves image for a given category
+        /// </summary>
+        /// <param name="file">Form file with the image</param>
+        /// <param name="category">Targeted category</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPut("SetCategoryImage/{category}")]
+        public async Task<IActionResult> SetCategoryImage(IFormFile file, string category)
+        {
+            DbContexts.MainContext.Category? checkCat = await clientDbContext.Categories.FindAsync(category);
+            if (checkCat == null)
+                return NotFound("Category was not found in the system!");
+
+            if (!CheckFileExtension(file))
+                return BadRequest("Image is not a jpeg or png!");
+
+            if (!CheckFileSize(file))
+                return BadRequest("File is bigger than 4MB!");
+
+            string fileName = string.Concat("Categories/", category);
+            DeleteFile(fileName);
+            await SaveFile(file, fileName);
+            return Ok(string.Concat("Image added for ", category, "!"));
+        }
+        /// <summary>
+        /// Deletes image from a given category
+        /// </summary>
+        /// <param name="category">Targeted category</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpDelete("DeleteCategoryImage/{category}")]
+        public async Task<IActionResult> DeleteCategoryImage(string category)
+        {
+            DbContexts.MainContext.Category? checkCat = await clientDbContext.Categories.FindAsync(category);
+            if (checkCat == null)
+                return NotFound("Category was not found in the system!");
+
+            string fileName = string.Concat("Categories/", category);
+            if(DeleteFile(fileName))
+            {
+                return Ok(string.Concat("Image deleted for ", category, "!"));
+            }
+            else
+            {
+                return BadRequest("No image found!");
             }
         }
     }

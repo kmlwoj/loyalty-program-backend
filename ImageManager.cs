@@ -14,24 +14,17 @@
         public static async Task<string> SaveFile(IFormFile file, string fileName)
         {
             string fileExtension = file.ContentType[6..];
-            try
+            if (!CheckFileExistence(fileName))
             {
-                if (!CheckFileExistence(fileName))
+                string path = MakePath(string.Concat(fileName, ".", fileExtension));
+                using (Stream stream = File.Create(path))
                 {
-                    string path = MakePath(string.Concat(fileName, ".", fileExtension));
-                    using (Stream stream = File.Create(path))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-                }
-                else
-                {
-                    return string.Empty;
+                    await file.CopyToAsync(stream);
                 }
             }
-            catch
+            else
             {
-                return string.Empty;
+                throw new Exception("Image already exists!");
             }
             return string.Concat(fileName, ".", fileExtension);
         }
@@ -40,7 +33,7 @@
             string[] file = GetFileNames(fileName);
             if (file.Length > 0)
             {
-                File.Delete(MakePath(file.First()));
+                File.Delete(file.First());
                 return true;
             }
             return false;
@@ -50,9 +43,9 @@
             string[] file = GetFileNames(fileName);
             if (file.Length > 0)
             {
-                return File.OpenRead(MakePath(file.First()));
+                return File.OpenRead(file.First());
             }
-            throw new Exception("File does not exist!");
+            throw new Exception("Image does not exist!");
         }
     }
 }
