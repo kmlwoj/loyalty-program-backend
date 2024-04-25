@@ -118,6 +118,9 @@ namespace lojalBackend.Controllers
 
                     await clientDbContext.SaveChangesAsync();
                     await shopDbContext.SaveChangesAsync();
+
+                    string fileName = string.Concat("Categories/", category);
+                    DeleteFile(fileName);
                 }
                 catch
                 {
