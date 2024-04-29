@@ -7,17 +7,16 @@
             Absolute,
             Percent
         }
-        public string Name { get; set; }
+        public string? Name { get; set; }
         public int Amount { get; set; }
         public DiscountType Type { get; set; }
         public int NewPrice { get; set; }
         public DateTime Expiry { get; set; }
         public DiscountModel()
         {
-            Name = string.Empty;
             Expiry = DateTime.MinValue;
         }
-        public DiscountModel(string name, string reduction, DateTime expiry, int oldPrice)
+        public DiscountModel(string? name, string reduction, DateTime expiry, int oldPrice)
         {
             Name = name;
             Expiry = expiry;
