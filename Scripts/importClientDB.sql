@@ -1,5 +1,7 @@
 CREATE DATABASE LojClientDB;
 
+USE LojClientDB;
+
 CREATE TABLE `USERS` (
   `LOGIN` varchar(128) PRIMARY KEY,
   `PASSWORD` varchar(128) NOT NULL,
