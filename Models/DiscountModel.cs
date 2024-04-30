@@ -7,6 +7,7 @@
             Absolute,
             Percent
         }
+        public int? ID { get; set; }
         public string? Name { get; set; }
         public int Amount { get; set; }
         public DiscountType Type { get; set; }
@@ -16,8 +17,9 @@
         {
             Expiry = DateTime.MinValue;
         }
-        public DiscountModel(string? name, string reduction, DateTime expiry, int oldPrice)
+        public DiscountModel(int? iD, string? name, string reduction, DateTime expiry, int oldPrice)
         {
+            ID = iD;
             Name = name;
             Expiry = expiry;
             ParseReduction(reduction);

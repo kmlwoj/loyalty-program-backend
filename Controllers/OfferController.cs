@@ -46,12 +46,14 @@ namespace lojalBackend.Controllers
                     .Where(x => entry.OfferId.Equals(x.OfferId) && x.Expiry.CompareTo(DateTime.UtcNow) > 0)
                     .FirstOrDefaultAsync();
                 answer.Add(new(
+                    entry.OfferId,
                     entry.Name,
                     entry.Price,
                     organization,
                     entry.State > 0, //mysql ef bug
                     entry.Category,
                     discount != null ? new(
+                        discount.OfferId,
                         discount.Name,
                         discount.Reduction,
                         discount.Expiry,
@@ -86,6 +88,7 @@ namespace lojalBackend.Controllers
             if (checkOffer != null)
                 return BadRequest("Offer already exists in the system!");
 
+            int newID = -1;
             using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
             {
                 try
@@ -101,6 +104,7 @@ namespace lojalBackend.Controllers
                     shopDbContext.Offers.Add(newOffer);
 
                     await shopDbContext.SaveChangesAsync();
+                    newID = newOffer.OfferId;
                 }
                 catch
                 {
@@ -110,7 +114,7 @@ namespace lojalBackend.Controllers
                 await transaction.CommitAsync();
             }
 
-            return Ok("Offer added!");
+            return Ok(newID);
         }
     }
 }
