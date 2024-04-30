@@ -42,7 +42,9 @@ namespace lojalBackend.Controllers
             List<OfferModel> answer = new();
             foreach (var entry in await shopDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
             {
-                DbContexts.ShopContext.Discount? discount = await shopDbContext.Discounts.Where(x => entry.OfferId.Equals(x.OfferId) && x.Expiry.CompareTo(DateTime.UtcNow) > 0).FirstOrDefaultAsync();
+                DbContexts.ShopContext.Discount? discount = await shopDbContext.Discounts
+                    .Where(x => entry.OfferId.Equals(x.OfferId) && x.Expiry.CompareTo(DateTime.UtcNow) > 0)
+                    .FirstOrDefaultAsync();
                 answer.Add(new(
                     entry.Name,
                     entry.Price,
@@ -58,6 +60,57 @@ namespace lojalBackend.Controllers
                     ));
             }
             return new JsonResult(answer);
+        }
+        /// <summary>
+        /// Adds new offer to the system
+        /// </summary>
+        /// <param name="offer">New offer</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPost("AddOffer")]
+        public async Task<IActionResult> AddOffer([FromBody] OfferModel offer)
+        {
+            DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(offer.Organization);
+            if (checkOrg == null)
+                return NotFound("Requested organization was not found in the system!");
+            if (!checkOrg.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)))
+                return BadRequest("Organization is not a registered shop!");
+            if (offer.Category != null)
+            {
+                DbContexts.MainContext.Category? checkCat = await clientDbContext.Categories.FindAsync(offer.Category);
+                if (checkCat == null)
+                    return NotFound("Requested category was not found in the system!");
+            }
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers
+                .Where(x => x.Organization.Equals(offer.Organization) && x.Name.Equals(offer.Name) && x.Price.Equals(offer.Price))
+                .FirstOrDefaultAsync();
+            if (checkOffer != null)
+                return BadRequest("Offer already exists in the system!");
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    DbContexts.ShopContext.Offer newOffer = new()
+                    {
+                        Name = offer.Name,
+                        Price = offer.Price,
+                        Category = offer.Category,
+                        Organization = offer.Organization,
+                        State = (ulong)(offer.IsActive ? 1 : 0)
+                    };
+                    shopDbContext.Offers.Add(newOffer);
+
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+
+            return Ok("Offer added!");
         }
     }
 }
