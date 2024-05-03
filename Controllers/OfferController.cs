@@ -116,5 +116,51 @@ namespace lojalBackend.Controllers
 
             return Ok(newID);
         }
+        /// <summary>
+        /// Changes details of an offer
+        /// </summary>
+        /// <param name="offer">Offer object</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPut("ChangeOffer")]
+        public async Task<IActionResult> ChangeOffer([FromBody] OfferModel offer)
+        {
+            DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(offer.Organization);
+            if (checkOrg == null)
+                return NotFound("Requested organization was not found in the system!");
+            if (!checkOrg.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)))
+                return BadRequest("Organization is not a registered shop!");
+            if (offer.Category != null)
+            {
+                DbContexts.MainContext.Category? checkCat = await clientDbContext.Categories.FindAsync(offer.Category);
+                if (checkCat == null)
+                    return NotFound("Requested category was not found in the system!");
+            }
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers
+                .Where(x => x.OfferId.Equals(offer.ID))
+                .FirstOrDefaultAsync();
+            if (checkOffer == null)
+                return NotFound("Offer was not found in the system!");
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    checkOffer.State = (ulong)(offer.IsActive ? 1 : 0);
+                    checkOffer.Category = offer.Category;
+                    checkOffer.Price = offer.Price;
+                    checkOffer.Name = offer.Name;
+                    shopDbContext.Update(checkOffer);
+
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+            return Ok("Offer changed!");
+        }
     }
 }

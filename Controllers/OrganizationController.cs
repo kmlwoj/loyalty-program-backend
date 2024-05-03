@@ -146,6 +146,7 @@ namespace lojalBackend.Controllers
                     });
                     Task clientTask = Task.Run(async () =>
                     {
+                        //TODO: check if organization has any offers in client db, if not then delete
                         var users = await clientDbContext.Users.Where(x => organization.Equals(x.Organization)).ToListAsync();
 
                         foreach (var user in users)
