@@ -9,14 +9,16 @@
         public bool IsActive { get; set; }
         public string? Category { get; set; }
         public DiscountModel? Discount { get; set; }
+        public bool? HasImage { get; set; }
         public OfferModel()
         {
             Name = string.Empty;
             Price = 0;
             Organization = string.Empty;
             IsActive = false;
+            HasImage = false;
         }
-        public OfferModel(int? iD, string name, int price, string organization, bool isActive, string? category, DiscountModel? discount)
+        public OfferModel(int? iD, string name, int price, string organization, bool isActive, string? category, DiscountModel? discount, bool? hasImage)
         {
             ID = iD;
             Name = name;
@@ -25,6 +27,7 @@
             IsActive = isActive;
             Category = category;
             Discount = discount;
+            HasImage = hasImage;
         }
     }
 }

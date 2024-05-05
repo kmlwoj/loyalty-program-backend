@@ -46,6 +46,8 @@ namespace lojalBackend.Controllers
                 DbContexts.ShopContext.Discount? discount = await shopDbContext.Discounts
                     .Where(x => entry.OfferId.Equals(x.OfferId) && x.Expiry.CompareTo(DateTime.UtcNow) > 0)
                     .FirstOrDefaultAsync();
+
+                string fileName = string.Concat("Offers/", entry.OfferId);
                 answer.Add(new(
                     entry.OfferId,
                     entry.Name,
@@ -59,7 +61,8 @@ namespace lojalBackend.Controllers
                         discount.Reduction,
                         discount.Expiry,
                         entry.Price
-                        ) : null
+                        ) : null,
+                    CheckFileExistence(fileName)
                     ));
             }
             return new JsonResult(answer);
@@ -202,6 +205,78 @@ namespace lojalBackend.Controllers
                 await transaction.CommitAsync();
             }
             return Ok("Offer deleted!");
+        }
+        /// <summary>
+        /// Retrieves offer image with the given ID
+        /// </summary>
+        /// <param name="ID">Offer ID</param>
+        /// <returns>Image with the content-type of image/{type}</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("GetOfferImage/{ID:int}")]
+        public async Task<IActionResult> GetOfferImage(int ID)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            try
+            {
+                string fileName = string.Concat("Offers/", ID);
+                FileStream answer = GetFile(fileName);
+                return File(answer, $"image/{Path.GetExtension(answer.Name)[1..]}");
+            }
+            catch (Exception ex)
+            {
+                if ("Image does not exist!".Equals(ex.Message))
+                    return NotFound(ex.Message);
+                throw;
+            }
+        }
+        /// <summary>
+        /// Saves image for a given offer
+        /// </summary>
+        /// <param name="file">Form file with the image</param>
+        /// <param name="ID">Targeted offer</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPut("SetCategoryImage/{ID:int}")]
+        public async Task<IActionResult> SetCategoryImage(IFormFile file, int ID)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            if (!CheckFileExtension(file))
+                return BadRequest("Image is not a jpeg or png!");
+
+            if (!CheckFileSize(file))
+                return BadRequest("File is bigger than 4MB!");
+
+            string fileName = string.Concat("Offers/", ID);
+            DeleteFile(fileName);
+            await SaveFile(file, fileName);
+            return Ok(string.Concat("Image added for offer with ID ", ID, "!"));
+        }
+        /// <summary>
+        /// Deletes image from a given offer
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpDelete("DeleteCategoryImage/{ID:int}")]
+        public async Task<IActionResult> DeleteCategoryImage(int ID)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            string fileName = string.Concat("Offers/", ID);
+            if (DeleteFile(fileName))
+            {
+                return Ok(string.Concat("Image deleted for offer with ID ", ID, "!"));
+            }
+            else
+            {
+                return BadRequest("No image found!");
+            }
         }
     }
 }
