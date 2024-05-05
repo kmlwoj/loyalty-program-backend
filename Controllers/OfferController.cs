@@ -207,6 +207,60 @@ namespace lojalBackend.Controllers
             return Ok("Offer deleted!");
         }
         /// <summary>
+        /// Sets offer discount details
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <param name="discount">Object with discount details (null means clear discount)</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPut("SetOfferDiscount/{ID:int}")]
+        public async Task<IActionResult> SetOfferDiscount(int ID, [FromBody] DiscountModel? discount)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    DateTime now = DateTime.UtcNow;
+                    DbContexts.ShopContext.Discount? checkDiscount = await shopDbContext.Discounts.Where(x => x.OfferId.Equals(ID) && x.Expiry.CompareTo(now) > 0).FirstOrDefaultAsync();
+                    if(checkDiscount != null)
+                    {
+                        checkDiscount.Expiry = now;
+                        shopDbContext.Update(checkDiscount);
+                    }
+                    if (discount != null)
+                    {
+                        if (discount.Expiry.CompareTo(now) < 0)
+                        {
+                            transaction.Rollback();
+                            return BadRequest("Expiry of the discount is set to the past date!");
+                        }
+                        discount.CalculatePrice(checkOffer.Price);
+                        DbContexts.ShopContext.Discount newDiscount = new()
+                        {
+                            OfferId = ID,
+                            Name = discount.Name,
+                            Reduction = discount.GetReductionString(),
+                            Expiry = discount.Expiry
+                        };
+                        await shopDbContext.Discounts.AddAsync(newDiscount);
+                    }
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+            return Ok(discount != null 
+                ? string.Concat("Discount set for offer with ID ", ID, "!") 
+                : string.Concat("Discount cleared for offer with ID ", ID, "!"));
+        }
+        /// <summary>
         /// Retrieves offer image with the given ID
         /// </summary>
         /// <param name="ID">Offer ID</param>
@@ -238,8 +292,8 @@ namespace lojalBackend.Controllers
         /// <param name="file">Form file with the image</param>
         /// <param name="ID">Targeted offer</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
-        [HttpPut("SetCategoryImage/{ID:int}")]
-        public async Task<IActionResult> SetCategoryImage(IFormFile file, int ID)
+        [HttpPut("SetOfferImage/{ID:int}")]
+        public async Task<IActionResult> SetOfferImage(IFormFile file, int ID)
         {
             DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
             if (checkOffer == null)
@@ -261,8 +315,8 @@ namespace lojalBackend.Controllers
         /// </summary>
         /// <param name="ID">Targeted offer ID</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
-        [HttpDelete("DeleteCategoryImage/{ID:int}")]
-        public async Task<IActionResult> DeleteCategoryImage(int ID)
+        [HttpDelete("DeleteOfferImage/{ID:int}")]
+        public async Task<IActionResult> DeleteOfferImage(int ID)
         {
             DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
             if (checkOffer == null)
