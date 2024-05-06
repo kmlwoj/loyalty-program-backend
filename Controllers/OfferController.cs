@@ -332,5 +332,29 @@ namespace lojalBackend.Controllers
                 return BadRequest("No image found!");
             }
         }
+        /// <summary>
+        /// Retrieves list of every code assigned to an offer
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <returns>List of objects of CodeModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpGet("CheckOfferCodes/{ID:int}")]
+        public async Task<IActionResult> CheckOfferCodes(int ID)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            List<CodeModel> answer = new();
+            foreach(var code in await shopDbContext.Codes.Where(x => x.OfferId == ID).ToListAsync())
+            {
+                answer.Add(new(
+                    code.CodeId,
+                    code.State > 0,
+                    code.Expiry
+                    ));
+            }
+            return new JsonResult(answer);
+        }
     }
 }
