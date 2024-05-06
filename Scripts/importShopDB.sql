@@ -24,10 +24,11 @@ CREATE TABLE `DISCOUNTS` (
 );
 
 CREATE TABLE `CODES` (
-  `CODE_ID` integer PRIMARY KEY,
+  `CODE_ID` integer NOT NULL,
   `OFFER_ID` integer NOT NULL,
   `STATE` bit DEFAULT true,
-  `EXPIRY` timestamp NOT NULL
+  `EXPIRY` timestamp NOT NULL,
+  PRIMARY KEY (`CODE_ID`, `OFFER_ID`)
 );
 
 CREATE TABLE `CATEGORIES` (

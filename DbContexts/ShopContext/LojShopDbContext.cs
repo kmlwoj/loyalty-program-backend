@@ -40,17 +40,17 @@ public partial class LojShopDbContext : DbContext
 
         modelBuilder.Entity<Code>(entity =>
         {
-            entity.HasKey(e => e.CodeId).HasName("PRIMARY");
+            entity.HasKey(e => new { e.CodeId, e.OfferId }).HasName("PRIMARY");
 
             entity.ToTable("CODES");
 
             entity.HasIndex(e => e.OfferId, "OFFER_ID");
 
             entity.Property(e => e.CodeId).HasColumnName("CODE_ID");
+            entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
             entity.Property(e => e.Expiry)
                 .HasColumnType("timestamp")
                 .HasColumnName("EXPIRY");
-            entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
             entity.Property(e => e.State)
                 .HasDefaultValueSql("b'1'")
                 .HasColumnType("bit(1)")
