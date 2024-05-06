@@ -1,19 +1,12 @@
 ﻿namespace lojalBackend.Models
 {
-    public class CodeModel
+    public class CodeModel : NewCodeModel
     {
-        public int Code { get; set; }
         public bool IsUsed { get; set; }
-        public DateTime Expiry { get; set; }
-        public CodeModel()
+        public CodeModel() : base() { }
+        public CodeModel(int code, bool isUsed, DateTime expiry) : base(code, expiry)
         {
-            Expiry = DateTime.MinValue;
-        }
-        public CodeModel(int code, bool isUsed, DateTime expiry)
-        {
-            Code = code;
             IsUsed = isUsed;
-            Expiry = expiry;
         }
     }
 }
