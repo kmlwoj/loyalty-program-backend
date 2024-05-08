@@ -39,8 +39,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Images\Categories\" />
-    <Folder Include="Images\Offers\" />
     <Folder Include="Logs\" />
   </ItemGroup>
 
