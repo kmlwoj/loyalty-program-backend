@@ -28,4 +28,5 @@ RUN rm -rf /app/Images
 RUN rm -f /app/Logs
 RUN mkdir -p /app/Images
 RUN mkdir -p /app/Images/Categories
+RUN mkdir -p /app/Images/Offers
 RUN mkdir -p /app/Logs
