@@ -361,17 +361,17 @@ namespace lojalBackend.Controllers
         /// Adds codes to a specified offer
         /// </summary>
         /// <param name="ID">Targeted offer ID</param>
-        /// <param name="codes">Array of codes of NewCodeModel schema (null means file method)</param>
+        /// <param name="codes">Array of codes of NewCodeModel schema</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPost("AddCodes/{ID:int}")]
-        public async Task<IActionResult> AddCodes(int ID, [FromBody] NewCodeModel[]? codes)
+        public async Task<IActionResult> AddCodes(int ID, [FromBody] NewCodeModel[] codes)
         {
             DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
             if (checkOffer == null)
                 return NotFound("Offer with the given ID was not found!");
             
-            if (codes == null)
-                return BadRequest("No codes given in the file!");
+            if (codes.Length == 0)
+                return BadRequest("No codes given in the endpoint!");
 
             List<DbContexts.ShopContext.Code> tmpDbCodes = new();
             foreach (var code in codes)
@@ -406,7 +406,7 @@ namespace lojalBackend.Controllers
         /// Adds codes from a file to a specified offer
         /// </summary>
         /// <param name="ID">Targeted offer ID</param>
-        /// <param name="fileCodes">File with codes formatted in JSON with NewCodeModel schema (null means NewCodeModel array method)</param>
+        /// <param name="fileCodes">File with codes formatted in JSON with NewCodeModel schema</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPost("AddCodesFromFile/{ID:int}")]
         public async Task<IActionResult> AddCodesFromFile(int ID, IFormFile fileCodes)
