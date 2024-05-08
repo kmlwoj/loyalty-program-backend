@@ -362,36 +362,76 @@ namespace lojalBackend.Controllers
         /// </summary>
         /// <param name="ID">Targeted offer ID</param>
         /// <param name="codes">Array of codes of NewCodeModel schema (null means file method)</param>
-        /// <param name="fileCodes">File with codes formatted in JSON with NewCodeModel schema (null means NewCodeModel array method)</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPost("AddCodes/{ID:int}")]
-        public async Task<IActionResult> AddCodes(int ID, [FromBody] NewCodeModel[]? codes, IFormFile? fileCodes)
+        public async Task<IActionResult> AddCodes(int ID, [FromBody] NewCodeModel[]? codes)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+            
+            if (codes == null)
+                return BadRequest("No codes given in the file!");
+
+            List<DbContexts.ShopContext.Code> tmpDbCodes = new();
+            foreach (var code in codes)
+            {
+                tmpDbCodes.Add(new()
+                {
+                    CodeId = code.Code,
+                    OfferId = ID,
+                    State = 0,
+                    Expiry = code.Expiry
+                });
+            }
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    await shopDbContext.Codes.AddRangeAsync(tmpDbCodes);
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+
+            return Ok(string.Concat("Codes added to the offer with ID ", ID, "!"));
+        }
+        /// <summary>
+        /// Adds codes from a file to a specified offer
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <param name="fileCodes">File with codes formatted in JSON with NewCodeModel schema (null means NewCodeModel array method)</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPost("AddCodesFromFile/{ID:int}")]
+        public async Task<IActionResult> AddCodesFromFile(int ID, IFormFile fileCodes)
         {
             DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
             if (checkOffer == null)
                 return NotFound("Offer with the given ID was not found!");
 
-            if (codes != null && fileCodes != null)
-                return BadRequest("Choose only one method of import!");
+            NewCodeModel[]? codes;
+            if (fileCodes == null)
+                return BadRequest("No codes specified in the endpoint body!");
 
-            NewCodeModel[]? tmpCodes = codes;
-
-            if(tmpCodes == null)
+            using (var sr = fileCodes.OpenReadStream())
             {
-                if (fileCodes == null)
-                    return BadRequest("No codes specified in the endpoint body!");
-
-                using (var sr = fileCodes.OpenReadStream())
+                var options = new JsonSerializerOptions
                 {
-                    tmpCodes = await JsonSerializer.DeserializeAsync<NewCodeModel[]>(sr);
-                    //jsonCodes = (CodeModel[]?)(serializer.Deserialize(sr, typeof(CodeModel[])));
-                }
-                if (tmpCodes == null)
-                    return BadRequest("No codes given in the file!");
+                    PropertyNameCaseInsensitive = true
+                };
+                codes = await JsonSerializer.DeserializeAsync<NewCodeModel[]>(sr, options);
             }
+            if (codes == null)
+                return BadRequest("No codes given in the file!");
 
             List<DbContexts.ShopContext.Code> tmpDbCodes = new();
-            foreach (var code in tmpCodes)
+            foreach (var code in codes)
             {
                 tmpDbCodes.Add(new()
                 {
