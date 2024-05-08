@@ -50,17 +50,17 @@ public partial class LojClientDbContext : DbContext
 
         modelBuilder.Entity<Code>(entity =>
         {
-            entity.HasKey(e => e.CodeId).HasName("PRIMARY");
+            entity.HasKey(e => new { e.CodeId, e.OfferId }).HasName("PRIMARY");
 
             entity.ToTable("CODES");
 
             entity.HasIndex(e => e.OfferId, "OFFER_ID");
 
             entity.Property(e => e.CodeId).HasColumnName("CODE_ID");
+            entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
             entity.Property(e => e.Expiry)
                 .HasColumnType("timestamp")
                 .HasColumnName("EXPIRY");
-            entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
 
             entity.HasOne(d => d.Offer).WithMany(p => p.Codes)
                 .HasForeignKey(d => d.OfferId)
@@ -199,7 +199,7 @@ public partial class LojClientDbContext : DbContext
 
             entity.ToTable("TRANSACTIONS");
 
-            entity.HasIndex(e => e.CodeId, "CODE_ID");
+            entity.HasIndex(e => new { e.CodeId, e.OfferId }, "CODE_ID");
 
             entity.HasIndex(e => e.Login, "LOGIN");
 
@@ -210,16 +210,12 @@ public partial class LojClientDbContext : DbContext
             entity.Property(e => e.Login)
                 .HasMaxLength(128)
                 .HasColumnName("LOGIN");
+            entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
             entity.Property(e => e.Price).HasColumnName("PRICE");
             entity.Property(e => e.Shop).HasColumnName("SHOP");
             entity.Property(e => e.TransDate)
                 .HasColumnType("timestamp")
                 .HasColumnName("TRANS_DATE");
-
-            entity.HasOne(d => d.Code).WithMany(p => p.Transactions)
-                .HasForeignKey(d => d.CodeId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("TRANSACTIONS_ibfk_1");
 
             entity.HasOne(d => d.LoginNavigation).WithMany(p => p.Transactions)
                 .HasForeignKey(d => d.Login)
@@ -230,6 +226,11 @@ public partial class LojClientDbContext : DbContext
                 .HasForeignKey(d => d.Shop)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("TRANSACTIONS_ibfk_3");
+
+            entity.HasOne(d => d.Code).WithMany(p => p.Transactions)
+                .HasForeignKey(d => new { d.CodeId, d.OfferId })
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("TRANSACTIONS_ibfk_1");
         });
 
         modelBuilder.Entity<User>(entity =>

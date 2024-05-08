@@ -13,6 +13,8 @@ public partial class Transaction
 
     public int CodeId { get; set; }
 
+    public int OfferId { get; set; }
+
     public int Price { get; set; }
 
     public string Shop { get; set; } = null!;

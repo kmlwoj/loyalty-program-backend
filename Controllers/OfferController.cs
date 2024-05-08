@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using static lojalBackend.ImageManager;
 
 namespace lojalBackend.Controllers
@@ -331,6 +332,205 @@ namespace lojalBackend.Controllers
             {
                 return BadRequest("No image found!");
             }
+        }
+        /// <summary>
+        /// Retrieves list of every code assigned to an offer
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <returns>List of objects of CodeModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpGet("CheckOfferCodes/{ID:int}")]
+        public async Task<IActionResult> CheckOfferCodes(int ID)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            List<CodeModel> answer = new();
+            foreach(var code in await shopDbContext.Codes.Where(x => x.OfferId == ID).ToListAsync())
+            {
+                answer.Add(new(
+                    code.CodeId,
+                    code.State > 0,
+                    code.Expiry
+                    ));
+            }
+            return new JsonResult(answer);
+        }
+        /// <summary>
+        /// Adds codes to a specified offer
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <param name="codes">Array of codes of NewCodeModel schema (null means file method)</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPost("AddCodes/{ID:int}")]
+        public async Task<IActionResult> AddCodes(int ID, [FromBody] NewCodeModel[]? codes)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+            
+            if (codes == null)
+                return BadRequest("No codes given in the file!");
+
+            List<DbContexts.ShopContext.Code> tmpDbCodes = new();
+            foreach (var code in codes)
+            {
+                tmpDbCodes.Add(new()
+                {
+                    CodeId = code.Code,
+                    OfferId = ID,
+                    State = 0,
+                    Expiry = code.Expiry
+                });
+            }
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    await shopDbContext.Codes.AddRangeAsync(tmpDbCodes);
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+
+            return Ok(string.Concat("Codes added to the offer with ID ", ID, "!"));
+        }
+        /// <summary>
+        /// Adds codes from a file to a specified offer
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <param name="fileCodes">File with codes formatted in JSON with NewCodeModel schema (null means NewCodeModel array method)</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPost("AddCodesFromFile/{ID:int}")]
+        public async Task<IActionResult> AddCodesFromFile(int ID, IFormFile fileCodes)
+        {
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+
+            NewCodeModel[]? codes;
+            if (fileCodes == null)
+                return BadRequest("No codes specified in the endpoint body!");
+
+            using (var sr = fileCodes.OpenReadStream())
+            {
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                codes = await JsonSerializer.DeserializeAsync<NewCodeModel[]>(sr, options);
+            }
+            if (codes == null)
+                return BadRequest("No codes given in the file!");
+
+            List<DbContexts.ShopContext.Code> tmpDbCodes = new();
+            foreach (var code in codes)
+            {
+                tmpDbCodes.Add(new()
+                {
+                    CodeId = code.Code,
+                    OfferId = ID,
+                    State = 0,
+                    Expiry = code.Expiry
+                });
+            }
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    await shopDbContext.Codes.AddRangeAsync(tmpDbCodes);
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+
+            return Ok(string.Concat("Codes added to the offer with ID ", ID, "!"));
+        }
+        /// <summary>
+        /// Changes current state of a given code
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <param name="code">Targeted code</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPut("ChangeCodeState/{ID:int}")]
+        public async Task<IActionResult> ChangeCodeState(int ID, [FromBody] int? code)
+        {
+            if (code == null)
+                return BadRequest("No code specified in the request body!");
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+            DbContexts.ShopContext.Code? checkCode = await shopDbContext.Codes.FindAsync(code, ID);
+            if (checkCode == null)
+                return NotFound("Given code was not found!");
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    checkCode.State = (ulong)(checkCode.State > 0 ? 0 : 1);
+                    shopDbContext.Update(checkCode);
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+
+            return Ok(string.Concat("Changed state of code from offer with ID ", ID, "!"));
+        }
+        /// <summary>
+        /// Removes a given code that is not already redeemed
+        /// </summary>
+        /// <param name="ID">Targeted offer ID</param>
+        /// <param name="code">Targeted code</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpDelete("DeleteCode/{ID:int}")]
+        public async Task<IActionResult> DeleteCode(int ID, [FromBody] int? code)
+        {
+            if (code == null)
+                return BadRequest("No code specified in the request body!");
+            DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
+            if (checkOffer == null)
+                return NotFound("Offer with the given ID was not found!");
+            DbContexts.ShopContext.Code? checkCode = await shopDbContext.Codes.FindAsync(code, ID);
+            if (checkCode == null)
+                return NotFound("Given code was not found!");
+            if (checkCode.State > 0)
+                return BadRequest("Code is already redeemed!");
+
+            using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    shopDbContext.Remove(checkCode);
+                    await shopDbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                await transaction.CommitAsync();
+            }
+
+            return Ok("Code deleted!");
         }
     }
 }
