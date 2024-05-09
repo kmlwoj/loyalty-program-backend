@@ -75,5 +75,65 @@ namespace lojalBackend.Controllers
 
             return new JsonResult(answer);
         }
+        /// <summary>
+        /// Retrieves every transaction in the system
+        /// </summary>
+        /// <param name="organization">Optional parameter that specifies which shop will be included in the list</param>
+        /// <returns>List of every transaction of TransactionModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpGet("GetAllTransactions")]
+        public async Task<IActionResult> GetAllTransactions([FromQuery] string? organization)
+        {
+            List<TransactionModel> answer = new();
+
+            List<Transaction> forEachList;
+            if(organization != null)
+            {
+                if(!"Shop".Equals((await clientDbContext.Organizations.FindAsync(organization))?.Type))
+                {
+                    return BadRequest("Given organization is not a shop!");
+                }
+                forEachList = await clientDbContext.Transactions.Where(x => x.Shop.Equals(organization)).OrderByDescending(x => x.TransDate).ToListAsync();
+            }
+            else
+            {
+                forEachList = await clientDbContext.Transactions.OrderByDescending(x => x.TransDate).ToListAsync();
+            }
+            foreach (var entry in forEachList)
+            {
+                DbContexts.MainContext.Code? code = await clientDbContext.Codes.FindAsync(entry.CodeId, entry.OfferId);
+                DbContexts.MainContext.Offer? offer = await clientDbContext.Offers.FindAsync(entry.OfferId);
+                DbContexts.MainContext.Discount? discount = await clientDbContext.Discounts.Where(x => x.OfferId == entry.OfferId).FirstOrDefaultAsync();
+
+                if (code != null && offer != null)
+                {
+                    string fileName = string.Concat("Offers/", entry.OfferId);
+                    answer.Add(new(
+                        entry.TransId,
+                        new(
+                            offer.OfferId,
+                            offer.Name,
+                            offer.Price,
+                            offer.Organization,
+                            offer.Category,
+                            discount != null ? new(
+                                discount.DiscId,
+                                discount.Name,
+                                discount.Reduction,
+                                offer.Price
+                                ) : null,
+                            CheckFileExistence(fileName)
+                            ),
+                        new(
+                            code.CodeId,
+                            code.Expiry
+                            ),
+                        entry.TransDate
+                        ));
+                }
+            }
+
+            return new JsonResult(answer);
+        }
     }
 }
