@@ -15,16 +15,11 @@ namespace lojalBackend.Models
         public int Amount { get; set; }
         public DiscountType Type { get; set; }
         public int? NewPrice { get; set; }
-        public DateTime Expiry { get; set; }
-        public DiscountModel()
-        {
-            Expiry = DateTime.MinValue;
-        }
-        public DiscountModel(int? iD, string? name, string reduction, DateTime expiry, int oldPrice)
+        public DiscountModel() { }
+        public DiscountModel(int? iD, string? name, string reduction, int oldPrice)
         {
             ID = iD;
             Name = name;
-            Expiry = expiry;
             ParseReduction(reduction);
             CalculatePrice(oldPrice);
         }
