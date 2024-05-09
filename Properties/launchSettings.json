@@ -25,7 +25,8 @@
       "environmentVariables": {
         "ASPNETCORE_HTTP_PORTS": "8080"
       },
-      "publishAllPorts": true
+      "publishAllPorts": true,
+      "DockerfileRunArguments": "--network=loj-backend-network --rm"
     }
   },
   "$schema": "http://json.schemastore.org/launchsettings.json",
