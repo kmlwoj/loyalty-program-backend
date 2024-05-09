@@ -380,7 +380,7 @@ namespace lojalBackend.Controllers
                 {
                     CodeId = code.Code,
                     OfferId = ID,
-                    State = 0,
+                    State = 1,
                     Expiry = code.Expiry
                 });
             }
@@ -437,7 +437,7 @@ namespace lojalBackend.Controllers
                 {
                     CodeId = code.Code,
                     OfferId = ID,
-                    State = 0,
+                    State = 1,
                     Expiry = code.Expiry
                 });
             }
@@ -512,7 +512,7 @@ namespace lojalBackend.Controllers
             DbContexts.ShopContext.Code? checkCode = await shopDbContext.Codes.FindAsync(code, ID);
             if (checkCode == null)
                 return NotFound("Given code was not found!");
-            if (checkCode.State > 0)
+            if (checkCode.State == 0)
                 return BadRequest("Code is already redeemed!");
 
             using (var transaction = await shopDbContext.Database.BeginTransactionAsync())
