@@ -135,5 +135,18 @@ namespace lojalBackend.Controllers
 
             return new JsonResult(answer);
         }
+        /// <summary>
+        /// Retrieves information about code availability in a given offer
+        /// </summary>
+        /// <param name="offerID">Targeted offer ID</param>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("IsCodeAvailable/{offerID:int}")]
+        public async Task<IActionResult> IsCodeAvailable(int offerID)
+        {
+            if (!await shopDbContext.Offers.AnyAsync(x => offerID == x.OfferId))
+                return NotFound("Given offer not found!");
+
+            return new JsonResult(await shopDbContext.Codes.AnyAsync(x => offerID == x.OfferId && x.State == 1));
+        }
     }
 }
