@@ -40,14 +40,14 @@ namespace lojalBackend.Controllers
             List<DbContexts.MainContext.Organization> shops;
             if (category == null)
             {
-                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals("Shop")).ToListAsync();
+                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop))).ToListAsync();
             }
             else
             {
                 if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
                     return NotFound("Given category not found in the system!");
 
-                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals("Shop") && x.Offers.Any(y => category.Equals(y.Category))).ToListAsync();
+                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)) && x.Offers.Any(y => category.Equals(y.Category))).ToListAsync();
             }
             foreach (var entry in shops)
             {
