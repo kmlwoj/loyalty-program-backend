@@ -7,12 +7,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Runtime.CompilerServices;
+using static lojalBackend.ImageManager;
 
 namespace lojalBackend.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
     public class OrganizationController : ControllerBase
     {
         private readonly ILogger<OrganizationController> _logger;
@@ -31,6 +31,7 @@ namespace lojalBackend.Controllers
         /// Retrieves organizations with types
         /// </summary>
         /// <returns>List of objects of OrganizationModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpGet("GetOrganizations")]
         public async Task<IActionResult> GetOrganizations()
         {
@@ -46,6 +47,7 @@ namespace lojalBackend.Controllers
         /// Adds new organization to the system
         /// </summary>
         /// <param name="organization">Organization data</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPost("AddOrganization")]
         public async Task<IActionResult> AddOrganization([FromBody] OrganizationModel organization)
         {
@@ -113,6 +115,7 @@ namespace lojalBackend.Controllers
         /// Deletes a given organization from the system
         /// </summary>
         /// <param name="organization">Targeted organization</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpDelete("DeleteOrganization")]
         public async Task<IActionResult> DeleteOrganization([FromBody] string organization)
         {
@@ -146,7 +149,6 @@ namespace lojalBackend.Controllers
                     });
                     Task clientTask = Task.Run(async () =>
                     {
-                        //TODO: check if organization has any offers in client db, if not then delete
                         if (!(await clientDbContext.Offers.AnyAsync(x => x.Organization.Equals(organization))))
                         {
                             var users = await clientDbContext.Users.Where(x => organization.Equals(x.Organization)).ToListAsync();
@@ -196,6 +198,87 @@ namespace lojalBackend.Controllers
                 await clientTransaciton.CommitAsync();
             }
             return Ok("Organization deleted!");
+        }
+        /// <summary>
+        /// Retrieves organization image with the given name
+        /// </summary>
+        /// <param name="organization">Organization name</param>
+        /// <returns>Image with the content-type of image/{type}</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("GetOrganizationImage/{organization}")]
+        public async Task<IActionResult> GetOrganizationImage(string organization)
+        {
+            if(HttpContext.User.IsInRole("Worker") || HttpContext.User.IsInRole("Manager"))
+            {
+                DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)) && x.Name.Equals(organization)).FirstOrDefaultAsync();
+                if (checkOrg == null)
+                    return NotFound("Shop not found in the system!");
+            }
+            else
+            {
+                DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(organization);
+                if (checkOrg == null)
+                    return NotFound("Requested organization was not found in the system!");
+            }
+
+            try
+            {
+                string fileName = string.Concat("Organizations/", organization);
+                FileStream answer = GetFile(fileName);
+                return File(answer, $"image/{Path.GetExtension(answer.Name)[1..]}");
+            }
+            catch (Exception ex)
+            {
+                if ("Image does not exist!".Equals(ex.Message))
+                    return NotFound(ex.Message);
+                throw;
+            }
+        }
+        /// <summary>
+        /// Saves image for a given organization
+        /// </summary>
+        /// <param name="file">Form file with the image</param>
+        /// <param name="organization">Targeted organization</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpPut("SetOrganizationImage/{organization}")]
+        public async Task<IActionResult> SetOrganizationImage(IFormFile file, string organization)
+        {
+            DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(organization);
+            if (checkOrg == null)
+                return NotFound("Requested organization was not found in the system!");
+
+            if (!CheckFileExtension(file))
+                return BadRequest("Image is not a jpeg or png!");
+
+            if (!CheckFileSize(file))
+                return BadRequest("File is bigger than 4MB!");
+
+            string fileName = string.Concat("Organizations/", organization);
+            DeleteFile(fileName);
+            await SaveFile(file, fileName);
+            return Ok(string.Concat("Image added for ", organization, "!"));
+        }
+        /// <summary>
+        /// Deletes image from a given organization
+        /// </summary>
+        /// <param name="organization">Targeted organization</param>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpDelete("DeleteOrganizationImage/{organization}")]
+        public async Task<IActionResult> DeleteOrganization1Image(string organization)
+        {
+            DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(organization);
+            if (checkOrg == null)
+                return NotFound("Requested organization was not found in the system!");
+
+            string fileName = string.Concat("Organizations/", organization);
+            if (DeleteFile(fileName))
+            {
+                return Ok(string.Concat("Image deleted for ", organization, "!"));
+            }
+            else
+            {
+                return BadRequest("No image found!");
+            }
         }
     }
 }

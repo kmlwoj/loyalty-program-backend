@@ -1,4 +1,5 @@
-﻿using lojalBackend.DbContexts.MainContext;
+﻿using DocumentFormat.OpenXml.Vml.Office;
+using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -27,22 +28,66 @@ namespace lojalBackend.Controllers
             this.shopDbContext = shopDbContext;
         }
         /// <summary>
+        /// Retrieves every shop from the system
+        /// </summary>
+        /// <param name="category">Optional targeted category</param>
+        /// <returns>Lsit of objects of ShopModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("GetShops")]
+        public async Task<IActionResult> GetShops([FromQuery] string? category)
+        {
+            List<ShopModel> answer = new();
+            List<DbContexts.MainContext.Organization> shops;
+            if (category == null)
+            {
+                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop))).ToListAsync();
+            }
+            else
+            {
+                if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
+                    return NotFound("Given category not found in the system!");
+
+                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)) && x.Offers.Any(y => category.Equals(y.Category))).ToListAsync();
+            }
+            foreach (var entry in shops)
+            {
+                string fileName = string.Concat("Organizations/", entry.Name);
+                answer.Add(new(entry.Name, CheckFileExistence(fileName)));
+            }
+            return answer.Count > 0 ? new JsonResult(answer) : NotFound("No shops found in the system!");
+        }
+        /// <summary>
         /// Retrieves offers from a given organization
         /// </summary>
         /// <param name="organization">Targeted organization</param>
+        /// <param name="category">Targeted category</param>
         /// <returns>List of offers of ShopOfferModel schema</returns>
         [Authorize(Policy = "IsLoggedIn")]
         [HttpGet("GetOffers/{organization}")]
-        public async Task<IActionResult> GetOffers(string organization)
+        public async Task<IActionResult> GetOffers(string organization, [FromQuery] string? category)
         {
             DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(organization);
             if (checkOrg == null)
                 return NotFound("Requested organization was not found in the system!");
             if (!checkOrg.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)))
                 return BadRequest("Organization is not a registered shop!");
+            if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
+                return NotFound("Given category not found in the system!");
 
             List<ShopOfferModel> answer = new();
-            foreach (var entry in await shopDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
+            List<DbContexts.ShopContext.Offer> shops;
+            if (category == null)
+            {
+                shops = await shopDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync();
+            }
+            else
+            {
+                if (!await shopDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
+                    return NotFound("Given category not found in the system!");
+
+                shops = await shopDbContext.Offers.Where(x => organization.Equals(x.Organization) && category.Equals(x.Category)).ToListAsync();
+            }
+            foreach (var entry in shops)
             {
                 DbContexts.ShopContext.Discount? discount = await shopDbContext.Discounts
                     .Where(x => entry.OfferId.Equals(x.OfferId) && x.Expiry.CompareTo(DateTime.UtcNow) > 0)
