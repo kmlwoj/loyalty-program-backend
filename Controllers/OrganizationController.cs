@@ -196,6 +196,9 @@ namespace lojalBackend.Controllers
                 }
                 await shopTransaction.CommitAsync();
                 await clientTransaciton.CommitAsync();
+
+                string fileName = string.Concat("Organizations/", organization);
+                DeleteFile(fileName);
             }
             return Ok("Organization deleted!");
         }
