@@ -2,7 +2,7 @@
 {
     public class ClientOfferModel : OfferModel
     {
-        DiscountModel? shopDiscount { get; set; }
+        public DiscountModel? shopDiscount { get; set; }
         public ClientOfferModel() : base() { }
         public ClientOfferModel(int? iD, string name, int price, string organization, string? category, DiscountModel? shopDiscount, bool? hasImage) : base(iD, name, price, organization, category, hasImage)
         {

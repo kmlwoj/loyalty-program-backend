@@ -1,4 +1,5 @@
-﻿using lojalBackend.DbContexts.MainContext;
+﻿using DocumentFormat.OpenXml.Vml.Office;
+using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -44,7 +45,9 @@ namespace lojalBackend.Controllers
             {
                 DbContexts.MainContext.Code? code = await clientDbContext.Codes.FindAsync(entry.CodeId, entry.OfferId);
                 DbContexts.MainContext.Offer? offer = await clientDbContext.Offers.FindAsync(entry.OfferId);
-                DbContexts.MainContext.Discount? discount = await clientDbContext.Discounts.Where(x => x.OfferId == entry.OfferId).FirstOrDefaultAsync();
+                DbContexts.MainContext.Discount? discount = null;
+                if (code != null && code.DiscId != null)
+                    discount = await clientDbContext.Discounts.FindAsync(code.DiscId);
 
                 if (code != null && offer != null) {
                     string fileName = string.Concat("Offers/", entry.OfferId);
@@ -103,7 +106,9 @@ namespace lojalBackend.Controllers
             {
                 DbContexts.MainContext.Code? code = await clientDbContext.Codes.FindAsync(entry.CodeId, entry.OfferId);
                 DbContexts.MainContext.Offer? offer = await clientDbContext.Offers.FindAsync(entry.OfferId);
-                DbContexts.MainContext.Discount? discount = await clientDbContext.Discounts.Where(x => x.OfferId == entry.OfferId).FirstOrDefaultAsync();
+                DbContexts.MainContext.Discount? discount = null;
+                if (code != null && code.DiscId != null)
+                    discount = await clientDbContext.Discounts.FindAsync(code.DiscId);
 
                 if (code != null && offer != null)
                 {
@@ -147,6 +152,124 @@ namespace lojalBackend.Controllers
                 return NotFound("Given offer not found!");
 
             return new JsonResult(await shopDbContext.Codes.AnyAsync(x => offerID == x.OfferId && x.State == 1));
+        }
+        /// <summary>
+        /// Buys a code from a given offer for the current user
+        /// </summary>
+        /// <param name="offerID">Targeted offer ID</param>
+        /// <returns>Object with code information of NewCodeModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpPost("BuyCode/{offerID:int}")]
+        public async Task<IActionResult> BuyCode(int offerID)
+        {
+            Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
+            if (login == null)
+                return BadRequest("User login not found in the token!");
+            User? dbUser = await clientDbContext.Users.FindAsync(login.Value);
+            if (dbUser == null)
+                return BadRequest("User not found in the database!");
+            if (!await shopDbContext.Offers.AnyAsync(x => offerID == x.OfferId))
+                return NotFound("Given offer not found!");
+
+            DbContexts.ShopContext.Code? foundCode;
+            using (var shopTransaction = await shopDbContext.Database.BeginTransactionAsync())
+            using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    foundCode = await shopDbContext.Codes.Where(x => offerID == x.OfferId && x.State == 1).OrderBy(x => x.Expiry).FirstOrDefaultAsync();
+                    if (foundCode == null)
+                    {
+                        shopTransaction.Rollback();
+                        clientTransaction.Rollback();
+                        return BadRequest("No code is available for purchase!");
+                    }
+
+                    DbContexts.ShopContext.Offer? shopOffer = await shopDbContext.Offers.FindAsync(offerID);
+                    DbContexts.ShopContext.Discount? shopDiscount = await shopDbContext.Discounts
+                    .Where(x => offerID.Equals(x.OfferId) && x.Expiry.CompareTo(DateTime.UtcNow) > 0)
+                    .FirstOrDefaultAsync();
+
+                    int price = 0;
+                    if(shopDiscount == null)
+                    {
+                        price = shopOffer == null ? 0 : shopOffer.Price;
+                    }
+                    else
+                    {
+                        DiscountModel tmpDiscount = new(shopDiscount.DiscId, shopDiscount.Name, shopDiscount.Reduction, shopOffer == null ? 0 :shopOffer.Price);
+                        price = tmpDiscount.NewPrice ?? 0;
+                    }
+
+                    if (dbUser.Credits < price)
+                        return BadRequest("Not enough credits to cover the transaction!");
+
+                    if (shopOffer != null)
+                    { 
+                        dbUser.Credits -= price;
+                        clientDbContext.Update(dbUser);
+
+                        foundCode.State = 0;
+                        shopDbContext.Update(foundCode);
+
+                        DbContexts.MainContext.Offer newOffer = new()
+                        {
+                            OfferId = shopOffer.OfferId,
+                            Name = shopOffer.Name,
+                            Price = shopOffer.Price,
+                            Organization = shopOffer.Organization,
+                            Category = shopOffer.Category
+                        };
+                        await clientDbContext.Offers.AddAsync(newOffer);
+
+                        DbContexts.MainContext.Discount? newDiscount = null;
+                        if (shopDiscount != null)
+                        {
+                            newDiscount = new()
+                            {
+                                DiscId = shopDiscount.DiscId,
+                                OfferId = shopDiscount.OfferId,
+                                Name = shopDiscount.Name,
+                                Reduction = shopDiscount.Reduction
+                            };
+                            await clientDbContext.Discounts.AddAsync((DbContexts.MainContext.Discount)newDiscount);
+                        }
+
+                        DbContexts.MainContext.Code newCode = new()
+                        {
+                            CodeId = foundCode.CodeId,
+                            OfferId = offerID,
+                            DiscId = newDiscount?.DiscId,
+                            Expiry = foundCode.Expiry
+                        };
+                        await clientDbContext.Codes.AddAsync(newCode);
+
+                        Transaction newTransaction = new()
+                        {
+                            Login = login.Value,
+                            TransDate = DateTime.UtcNow,
+                            CodeId = newCode.CodeId,
+                            OfferId = newCode.OfferId,
+                            Price = price,
+                            Shop = newOffer.Organization
+                        };
+                        await clientDbContext.Transactions.AddAsync(newTransaction);
+
+                        await clientDbContext.SaveChangesAsync();
+                        await shopDbContext.SaveChangesAsync();
+                    }
+                }
+                catch
+                {
+                    shopTransaction.Rollback();
+                    clientTransaction.Rollback();
+                    throw;
+                }
+                await shopTransaction.CommitAsync();
+                await clientTransaction.CommitAsync();
+            }
+
+            return new JsonResult(new NewCodeModel(foundCode.CodeId, foundCode.Expiry));
         }
     }
 }

@@ -351,7 +351,7 @@ namespace lojalBackend.Controllers
             {
                 answer.Add(new(
                     code.CodeId,
-                    code.State > 0,
+                    code.State == 0,
                     code.Expiry
                     ));
             }
