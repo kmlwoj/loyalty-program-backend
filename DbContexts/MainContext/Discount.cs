@@ -13,5 +13,7 @@ public partial class Discount
 
     public string Reduction { get; set; } = null!;
 
+    public virtual ICollection<Code> Codes { get; set; } = new List<Code>();
+
     public virtual Offer Offer { get; set; } = null!;
 }

@@ -54,13 +54,20 @@ public partial class LojClientDbContext : DbContext
 
             entity.ToTable("CODES");
 
+            entity.HasIndex(e => e.DiscId, "DISC_ID");
+
             entity.HasIndex(e => e.OfferId, "OFFER_ID");
 
             entity.Property(e => e.CodeId).HasColumnName("CODE_ID");
             entity.Property(e => e.OfferId).HasColumnName("OFFER_ID");
+            entity.Property(e => e.DiscId).HasColumnName("DISC_ID");
             entity.Property(e => e.Expiry)
                 .HasColumnType("timestamp")
                 .HasColumnName("EXPIRY");
+
+            entity.HasOne(d => d.Disc).WithMany(p => p.Codes)
+                .HasForeignKey(d => d.DiscId)
+                .HasConstraintName("CODES_ibfk_2");
 
             entity.HasOne(d => d.Offer).WithMany(p => p.Codes)
                 .HasForeignKey(d => d.OfferId)

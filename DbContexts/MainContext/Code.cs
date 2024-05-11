@@ -11,6 +11,10 @@ public partial class Code
 
     public DateTime Expiry { get; set; }
 
+    public int? DiscId { get; set; }
+
+    public virtual Discount? Disc { get; set; }
+
     public virtual Offer Offer { get; set; } = null!;
 
     public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();

@@ -30,7 +30,7 @@ namespace lojalBackend.Controllers
         /// Retrieves offers from a given organization
         /// </summary>
         /// <param name="organization">Targeted organization</param>
-        /// <returns>List of offers of OfferModel schema</returns>
+        /// <returns>List of offers of ShopOfferModel schema</returns>
         [Authorize(Policy = "IsLoggedIn")]
         [HttpGet("GetOffers/{organization}")]
         public async Task<IActionResult> GetOffers(string organization)
@@ -41,7 +41,7 @@ namespace lojalBackend.Controllers
             if (!checkOrg.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)))
                 return BadRequest("Organization is not a registered shop!");
 
-            List<OfferModel> answer = new();
+            List<ShopOfferModel> answer = new();
             foreach (var entry in await shopDbContext.Offers.Where(x => organization.Equals(x.Organization)).ToListAsync())
             {
                 DbContexts.ShopContext.Discount? discount = await shopDbContext.Discounts
@@ -57,7 +57,7 @@ namespace lojalBackend.Controllers
                     entry.State > 0, //mysql ef bug
                     entry.Category,
                     discount != null ? new(
-                        discount.OfferId,
+                        discount.DiscId,
                         discount.Name,
                         discount.Reduction,
                         discount.Expiry,
@@ -74,7 +74,7 @@ namespace lojalBackend.Controllers
         /// <param name="offer">New offer</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPost("AddOffer")]
-        public async Task<IActionResult> AddOffer([FromBody] OfferModel offer)
+        public async Task<IActionResult> AddOffer([FromBody] ShopOfferModel offer)
         {
             DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(offer.Organization);
             if (checkOrg == null)
@@ -127,7 +127,7 @@ namespace lojalBackend.Controllers
         /// <param name="offer">Offer object</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPut("ChangeOffer")]
-        public async Task<IActionResult> ChangeOffer([FromBody] OfferModel offer)
+        public async Task<IActionResult> ChangeOffer([FromBody] ShopOfferModel offer)
         {
             DbContexts.MainContext.Organization? checkOrg = await clientDbContext.Organizations.FindAsync(offer.Organization);
             if (checkOrg == null)
@@ -214,7 +214,7 @@ namespace lojalBackend.Controllers
         /// <param name="discount">Object with discount details (null means clear discount)</param>
         [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
         [HttpPut("SetOfferDiscount/{ID:int}")]
-        public async Task<IActionResult> SetOfferDiscount(int ID, [FromBody] DiscountModel? discount)
+        public async Task<IActionResult> SetOfferDiscount(int ID, [FromBody] ShopDiscountModel? discount)
         {
             DbContexts.ShopContext.Offer? checkOffer = await shopDbContext.Offers.FindAsync(ID);
             if (checkOffer == null)
@@ -351,7 +351,7 @@ namespace lojalBackend.Controllers
             {
                 answer.Add(new(
                     code.CodeId,
-                    code.State > 0,
+                    code.State == 0,
                     code.Expiry
                     ));
             }
