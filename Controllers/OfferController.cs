@@ -1,4 +1,5 @@
-﻿using lojalBackend.DbContexts.MainContext;
+﻿using DocumentFormat.OpenXml.Vml.Office;
+using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -25,6 +26,36 @@ namespace lojalBackend.Controllers
             _configuration = configuration;
             this.clientDbContext = clientDbContext;
             this.shopDbContext = shopDbContext;
+        }
+        /// <summary>
+        /// Retrieves every shop from the system
+        /// </summary>
+        /// <param name="category">Optional targeted category</param>
+        /// <returns>Lsit of objects of ShopModel schema</returns>
+        [Authorize(Policy = "IsLoggedIn")]
+        [HttpGet("GetShops")]
+        public async Task<IActionResult> GetShops([FromQuery] string? category)
+        {
+            List<ShopModel> answer = new();
+            List<DbContexts.MainContext.Organization> shops;
+            if (category == null)
+            {
+                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals("Shop")).ToListAsync();
+            }
+            else
+            {
+                if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
+                {
+                    return NotFound("Given category not found in the system!");
+                }
+                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals("Shop") && x.Offers.Any(y => category.Equals(y.Category))).ToListAsync();
+            }
+            foreach (var entry in shops)
+            {
+                string fileName = string.Concat("Organizations/", entry.Name);
+                answer.Add(new(entry.Name, CheckFileExistence(fileName)));
+            }
+            return answer.Count > 0 ? new JsonResult(answer) : NotFound("No shops found in the system!");
         }
         /// <summary>
         /// Retrieves offers from a given organization
