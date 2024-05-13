@@ -71,8 +71,6 @@ namespace lojalBackend.Controllers
                 return NotFound("Requested organization was not found in the system!");
             if (!checkOrg.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)))
                 return BadRequest("Organization is not a registered shop!");
-            if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
-                return NotFound("Given category not found in the system!");
 
             List<ShopOfferModel> answer = new();
             List<DbContexts.ShopContext.Offer> shops;
@@ -82,7 +80,7 @@ namespace lojalBackend.Controllers
             }
             else
             {
-                if (!await shopDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
+                if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
                     return NotFound("Given category not found in the system!");
 
                 shops = await shopDbContext.Offers.Where(x => organization.Equals(x.Organization) && category.Equals(x.Category)).ToListAsync();
