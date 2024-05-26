@@ -5,6 +5,8 @@ namespace lojalBackend.DbContexts.MainContext;
 
 public partial class ContactInfo
 {
+    public int Id { get; set; }
+
     public string? Name { get; set; }
 
     public string? Position { get; set; }

@@ -77,10 +77,11 @@ public partial class LojClientDbContext : DbContext
 
         modelBuilder.Entity<ContactInfo>(entity =>
         {
-            entity
-                .HasNoKey()
-                .ToTable("CONTACT_INFO");
+            entity.HasKey(e => e.Id).HasName("PRIMARY");
 
+            entity.ToTable("CONTACT_INFO");
+
+            entity.Property(e => e.Id).HasColumnName("ID");
             entity.Property(e => e.Email)
                 .HasMaxLength(128)
                 .HasColumnName("EMAIL");
