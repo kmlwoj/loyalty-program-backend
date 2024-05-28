@@ -2,6 +2,7 @@
 {
     public class ContactInfoModel
     {
+        public int Id { get; set; }
         public string? Name { get; set; }
         public string? Position { get; set; }
         public string Email { get; set; }
@@ -15,8 +16,9 @@
             Phone = string.Empty;
         }
 
-        public ContactInfoModel(string? name, string email, string phone, string? position)
+        public ContactInfoModel(int id, string? name, string email, string phone, string? position)
         {
+            Id = id;
             Name = name;
             Position = position;
             Email = email;

@@ -36,7 +36,7 @@ namespace lojalBackend.Controllers
             List<ContactInfoModel> answer = new();
             await foreach(var entry in clientDbContext.ContactInfos.AsAsyncEnumerable())
             {
-                answer.Add(new ContactInfoModel(entry.Name, entry.Email, entry.Phone, entry.Position));
+                answer.Add(new ContactInfoModel(entry.Id, entry.Name, entry.Email, entry.Phone, entry.Position));
             }
             return new JsonResult(answer);
         }
@@ -62,9 +62,7 @@ namespace lojalBackend.Controllers
                         Email = contact.Email,
                         Phone = contact.Phone,
                         Position = contact.Position
-                    }; // it would be great to have a constructor in ContactInfo
-                       // that takes a ContactInfoModel object as a parameter and
-                       // initializes the properties with the values from the model
+                    };
                     await clientDbContext.ContactInfos.AddAsync(newDbContextsContact);
                     await clientDbContext.SaveChangesAsync();
                     await clientTransaction.CommitAsync();
