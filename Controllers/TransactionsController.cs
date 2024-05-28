@@ -151,17 +151,20 @@ namespace lojalBackend.Controllers
             if (!await shopDbContext.Offers.AnyAsync(x => offerID == x.OfferId))
                 return NotFound("Given offer not found!");
 
-            return new JsonResult(await shopDbContext.Codes.Where(x => offerID == x.OfferId && x.State == 1).CountAsync());
+            return new JsonResult(await shopDbContext.Codes.Where(x => offerID == x.OfferId && DateTime.UtcNow.CompareTo(x.Expiry) < 0 && x.State == 1).CountAsync());
         }
         /// <summary>
         /// Buys a code from a given offer for the current user
         /// </summary>
         /// <param name="offerID">Targeted offer ID</param>
+        /// <param name="amount">Amount of codes to buy (default is 1)</param>
         /// <returns>Object with code information of NewCodeModel schema</returns>
         [Authorize(Policy = "IsLoggedIn")]
-        [HttpPost("BuyCode/{offerID:int}")]
-        public async Task<IActionResult> BuyCode(int offerID)
+        [HttpPost("BuyCode/{offerID:int}/{amount:int}")]
+        public async Task<IActionResult> BuyCode(int offerID, int amount = 1)
         {
+            List<NewCodeModel> answer = new();
+
             Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
             if (login == null)
                 return BadRequest("User login not found in the token!");
@@ -171,19 +174,19 @@ namespace lojalBackend.Controllers
             if (!await shopDbContext.Offers.AnyAsync(x => offerID == x.OfferId))
                 return NotFound("Given offer not found!");
 
-            DbContexts.ShopContext.Code? foundCode;
             using (var shopTransaction = await shopDbContext.Database.BeginTransactionAsync())
             using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
             {
                 try
                 {
-                    foundCode = await shopDbContext.Codes.Where(x => offerID == x.OfferId && x.State == 1).OrderBy(x => x.Expiry).FirstOrDefaultAsync();
-                    if (foundCode == null)
+                    var shopCodes = await shopDbContext.Codes.Where(x => offerID == x.OfferId && DateTime.UtcNow.CompareTo(x.Expiry) < 0 && x.State == 1).OrderBy(x => x.Expiry).ToListAsync();
+                    if(shopCodes.Count < amount)
                     {
                         shopTransaction.Rollback();
                         clientTransaction.Rollback();
-                        return BadRequest("No code is available for purchase!");
+                        return BadRequest("There are less codes in the system than ordered!");
                     }
+                    shopCodes = shopCodes.Take(amount).ToList();
 
                     DbContexts.ShopContext.Offer? shopOffer = await shopDbContext.Offers.FindAsync(offerID);
                     DbContexts.ShopContext.Discount? shopDiscount = await shopDbContext.Discounts
@@ -193,12 +196,12 @@ namespace lojalBackend.Controllers
                     int price = 0;
                     if(shopDiscount == null)
                     {
-                        price = shopOffer == null ? 0 : shopOffer.Price;
+                        price = shopOffer == null ? 0 : shopOffer.Price * shopCodes.Count;
                     }
                     else
                     {
                         DiscountModel tmpDiscount = new(shopDiscount.DiscId, shopDiscount.Name, shopDiscount.Reduction, shopOffer == null ? 0 :shopOffer.Price);
-                        price = tmpDiscount.NewPrice ?? 0;
+                        price = tmpDiscount.NewPrice == null ? 0 : (int)tmpDiscount.NewPrice * shopCodes.Count;
                     }
 
                     if (dbUser.Credits < price)
@@ -209,21 +212,26 @@ namespace lojalBackend.Controllers
                         dbUser.Credits -= price;
                         clientDbContext.Update(dbUser);
 
-                        foundCode.State = 0;
-                        shopDbContext.Update(foundCode);
-
-                        DbContexts.MainContext.Offer newOffer = new()
+                        foreach(var code in shopCodes)
                         {
-                            OfferId = shopOffer.OfferId,
-                            Name = shopOffer.Name,
-                            Price = shopOffer.Price,
-                            Organization = shopOffer.Organization,
-                            Category = shopOffer.Category
-                        };
-                        await clientDbContext.Offers.AddAsync(newOffer);
-
+                            code.State = 0;
+                            shopDbContext.Update(code);
+                        }
+                        if(await clientDbContext.Offers.FindAsync(shopOffer.OfferId) == null)
+                        {
+                            DbContexts.MainContext.Offer newOffer = new()
+                            {
+                                OfferId = shopOffer.OfferId,
+                                Name = shopOffer.Name,
+                                Price = shopOffer.Price,
+                                Organization = shopOffer.Organization,
+                                Category = shopOffer.Category
+                            };
+                            await clientDbContext.Offers.AddAsync(newOffer);
+                        }
+                        
                         DbContexts.MainContext.Discount? newDiscount = null;
-                        if (shopDiscount != null)
+                        if (shopDiscount != null && await clientDbContext.Discounts.FindAsync(shopDiscount.DiscId) == null)
                         {
                             newDiscount = new()
                             {
@@ -234,26 +242,30 @@ namespace lojalBackend.Controllers
                             };
                             await clientDbContext.Discounts.AddAsync((DbContexts.MainContext.Discount)newDiscount);
                         }
-
-                        DbContexts.MainContext.Code newCode = new()
+                        foreach(var code in shopCodes)
                         {
-                            CodeId = foundCode.CodeId,
-                            OfferId = offerID,
-                            DiscId = newDiscount?.DiscId,
-                            Expiry = foundCode.Expiry
-                        };
-                        await clientDbContext.Codes.AddAsync(newCode);
+                            DbContexts.MainContext.Code newCode = new()
+                            {
+                                CodeId = code.CodeId,
+                                OfferId = offerID,
+                                DiscId = newDiscount?.DiscId,
+                                Expiry = code.Expiry
+                            };
+                            await clientDbContext.Codes.AddAsync(newCode);                        
 
-                        Transaction newTransaction = new()
-                        {
-                            Login = login.Value,
-                            TransDate = DateTime.UtcNow,
-                            CodeId = newCode.CodeId,
-                            OfferId = newCode.OfferId,
-                            Price = price,
-                            Shop = newOffer.Organization
-                        };
-                        await clientDbContext.Transactions.AddAsync(newTransaction);
+                            Transaction newTransaction = new()
+                            {
+                                Login = login.Value,
+                                TransDate = DateTime.UtcNow,
+                                CodeId = newCode.CodeId,
+                                OfferId = newCode.OfferId,
+                                Price = price,
+                                Shop = shopOffer.Organization
+                            };
+                            await clientDbContext.Transactions.AddAsync(newTransaction);
+
+                            answer.Add(new(code.CodeId, code.Expiry));
+                        }
 
                         await clientDbContext.SaveChangesAsync();
                         await shopDbContext.SaveChangesAsync();
@@ -269,7 +281,7 @@ namespace lojalBackend.Controllers
                 await clientTransaction.CommitAsync();
             }
 
-            return new JsonResult(new NewCodeModel(foundCode.CodeId, foundCode.Expiry));
+            return new JsonResult(answer);
         }
     }
 }
