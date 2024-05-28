@@ -1,5 +1,4 @@
-﻿using DocumentFormat.OpenXml.Vml.Office;
-using lojalBackend.DbContexts.MainContext;
+﻿using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -416,6 +415,13 @@ namespace lojalBackend.Controllers
             if (codes.Length == 0)
                 return BadRequest("No codes given in the endpoint!");
 
+            var tmpCodes = await shopDbContext.Codes.Where(x => x.OfferId == ID).ToListAsync();
+            foreach(var code in tmpCodes)
+            {
+                if (codes.Any(x => x.Code == code.CodeId))
+                    return BadRequest($"Code {code.CodeId} already exists in the system!");
+            }
+
             List<DbContexts.ShopContext.Code> tmpDbCodes = new();
             foreach (var code in codes)
             {
@@ -472,6 +478,13 @@ namespace lojalBackend.Controllers
             }
             if (codes == null)
                 return BadRequest("No codes given in the file!");
+
+            var tmpCodes = await shopDbContext.Codes.Where(x => x.OfferId == ID).ToListAsync();
+            foreach (var code in tmpCodes)
+            {
+                if (codes.Any(x => x.Code == code.CodeId))
+                    return BadRequest($"Code {code.CodeId} already exists in the system!");
+            }
 
             List<DbContexts.ShopContext.Code> tmpDbCodes = new();
             foreach (var code in codes)
