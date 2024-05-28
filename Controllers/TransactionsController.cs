@@ -163,6 +163,10 @@ namespace lojalBackend.Controllers
         [HttpPost("BuyCode/{offerID:int}")]
         public async Task<IActionResult> BuyCode(int offerID, [FromQuery] int amount = 1)
         {
+            if(amount < 1)
+            {
+                return BadRequest("Amount must be higher than 1!");
+            }
             List<NewCodeModel> answer = new();
 
             Claim? login = HttpContext.User.Claims.FirstOrDefault(c => c.Type.Contains("sub"));
