@@ -160,8 +160,8 @@ namespace lojalBackend.Controllers
         /// <param name="amount">Amount of codes to buy (default is 1)</param>
         /// <returns>Object with code information of NewCodeModel schema</returns>
         [Authorize(Policy = "IsLoggedIn")]
-        [HttpPost("BuyCode/{offerID:int}/{amount:int}")]
-        public async Task<IActionResult> BuyCode(int offerID, int amount = 1)
+        [HttpPost("BuyCode/{offerID:int}")]
+        public async Task<IActionResult> BuyCode(int offerID, [FromQuery] int amount = 1)
         {
             List<NewCodeModel> answer = new();
 
