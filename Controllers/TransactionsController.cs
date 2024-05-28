@@ -141,17 +141,17 @@ namespace lojalBackend.Controllers
             return new JsonResult(answer);
         }
         /// <summary>
-        /// Retrieves information about code availability in a given offer
+        /// Retrieves information about available code count
         /// </summary>
         /// <param name="offerID">Targeted offer ID</param>
         [Authorize(Policy = "IsLoggedIn")]
-        [HttpGet("IsCodeAvailable/{offerID:int}")]
-        public async Task<IActionResult> IsCodeAvailable(int offerID)
+        [HttpGet("CheckAvailableCodes/{offerID:int}")]
+        public async Task<IActionResult> CheckAvailableCodes(int offerID)
         {
             if (!await shopDbContext.Offers.AnyAsync(x => offerID == x.OfferId))
                 return NotFound("Given offer not found!");
 
-            return new JsonResult(await shopDbContext.Codes.AnyAsync(x => offerID == x.OfferId && x.State == 1));
+            return new JsonResult(await shopDbContext.Codes.Where(x => offerID == x.OfferId && x.State == 1).CountAsync());
         }
         /// <summary>
         /// Buys a code from a given offer for the current user
