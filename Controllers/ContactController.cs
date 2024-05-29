@@ -3,6 +3,7 @@ using lojalBackend.DbContexts.MainContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+// using Microsoft.EntityFrameworkCore;
 
 
 namespace lojalBackend.Controllers
@@ -11,12 +12,13 @@ namespace lojalBackend.Controllers
     [ApiController]
     public class ContactController : ControllerBase
     {
-        private readonly ILogger<ContactController> _logger;
-        private readonly IConfiguration _configuration;
+        private readonly ILogger<ContactController> _logger; // what is it for? who uses it?
+        private readonly IConfiguration _configuration; // what is it for? who uses it?
         private readonly LojClientDbContext clientDbContext;
-        private readonly LojShopDbContext shopDbContext;
+        private readonly LojShopDbContext shopDbContext; // what is it for? who uses it?
 
-        public ContactController(ILogger<ContactController> logger, IConfiguration configuration,
+        public ContactController(ILogger<ContactController> logger,
+            IConfiguration configuration,
             LojClientDbContext clientDbContext, LojShopDbContext shopDbContext)
         {
             _logger = logger;
@@ -34,10 +36,12 @@ namespace lojalBackend.Controllers
         public async Task<IActionResult> GetContacts()
         {
             List<ContactInfoModel> answer = new();
-            await foreach(var entry in clientDbContext.ContactInfos.AsAsyncEnumerable())
+            await foreach (var entry in clientDbContext.ContactInfos.AsAsyncEnumerable())
             {
-                answer.Add(new ContactInfoModel(entry.Id, entry.Name, entry.Email, entry.Phone, entry.Position));
+                answer.Add(new ContactInfoModel(entry.Id, entry.Name, entry.Email,
+                    entry.Phone, entry.Position));
             }
+
             return new JsonResult(answer);
         }
 
@@ -52,11 +56,12 @@ namespace lojalBackend.Controllers
         [HttpPost("AddContact")]
         public async Task<IActionResult> AddContact([FromBody] ContactInfoModel contact)
         {
-            using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
+            using (var clientTransaction =
+                   await clientDbContext.Database.BeginTransactionAsync())
             {
                 try
                 {
-                    DbContexts.MainContext.ContactInfo newDbContextsContact = new()
+                    ContactInfo newDbContextsContact = new()
                     {
                         Name = contact.Name,
                         Email = contact.Email,
@@ -76,9 +81,39 @@ namespace lojalBackend.Controllers
             }
         }
 
+        /// <summary>
+        /// Deletes contact from the system
+        /// </summary>
+        /// <param name="id">id of contact to delete</param>
+        /// <returns>Sucess message</returns>
+        /// <response code="200">Contact deleted successfully</response>
+        /// <response code="400">Bad request</response>
+        /// <response code="404">Contact not found</response>
+        [Authorize(Policy = "IsLoggedIn", Roles = "Administrator")]
+        [HttpDelete("DeleteContact")]
+        public async Task<IActionResult> DeleteContact([FromBody] int id)
+        {
+            var contactInfoToDelete =
+                await clientDbContext.ContactInfos.FindAsync(id);
+
+            if (contactInfoToDelete == null)
+                return NotFound($"Contact with id {id} was not found in the system.");
+
+            using (var clientTransaction = await clientDbContext.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    clientDbContext.ContactInfos.Remove(contactInfoToDelete);
+                    await clientDbContext.SaveChangesAsync();
+                    await clientTransaction.CommitAsync();
+                    return Ok($"Contact with id {id} was found and deleted from the  system.");
+                }
+                catch (Exception e)
+                {
+                    await clientTransaction.RollbackAsync();
+                    return BadRequest(e.Message);
+                }
+            }
+        }
     }
 }
-
-
-
-
