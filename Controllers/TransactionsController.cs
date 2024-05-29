@@ -221,38 +221,52 @@ namespace lojalBackend.Controllers
                             code.State = 0;
                             shopDbContext.Update(code);
                         }
-                        if(await clientDbContext.Offers.FindAsync(shopOffer.OfferId) == null)
+                        var dbOffer = await clientDbContext.Offers.Where(x => 
+                                                                        x.Name.Equals(shopOffer.Name) && 
+                                                                        x.Price == shopOffer.Price && 
+                                                                        x.Organization.Equals(shopOffer.Organization) && 
+                                                                        string.Equals(shopOffer.Category, x.Category))
+                                                                            .FirstOrDefaultAsync();
+                        if (dbOffer == null)
                         {
-                            DbContexts.MainContext.Offer newOffer = new()
+                            dbOffer = new()
                             {
-                                OfferId = shopOffer.OfferId,
+                                OfferId = await clientDbContext.Offers.CountAsync() + 1,
                                 Name = shopOffer.Name,
                                 Price = shopOffer.Price,
                                 Organization = shopOffer.Organization,
                                 Category = shopOffer.Category
                             };
-                            await clientDbContext.Offers.AddAsync(newOffer);
+                            await clientDbContext.Offers.AddAsync(dbOffer);
                         }
-                        
-                        DbContexts.MainContext.Discount? newDiscount = null;
-                        if (shopDiscount != null && await clientDbContext.Discounts.FindAsync(shopDiscount.DiscId) == null)
+
+                        DbContexts.MainContext.Discount? dbDiscount = null;
+                        if (shopDiscount != null)
                         {
-                            newDiscount = new()
+                            dbDiscount = await clientDbContext.Discounts.Where(x => 
+                                                                            x.OfferId == dbOffer.OfferId && 
+                                                                            string.Equals(x.Name, shopDiscount.Name) && 
+                                                                            x.Reduction.Equals(shopDiscount.Reduction))
+                                                                                .FirstOrDefaultAsync();
+                            if(dbDiscount == null)
                             {
-                                DiscId = shopDiscount.DiscId,
-                                OfferId = shopDiscount.OfferId,
-                                Name = shopDiscount.Name,
-                                Reduction = shopDiscount.Reduction
-                            };
-                            await clientDbContext.Discounts.AddAsync((DbContexts.MainContext.Discount)newDiscount);
+                                dbDiscount = new()
+                                {
+                                    DiscId = await clientDbContext.Discounts.CountAsync() + 1,
+                                    OfferId = dbOffer.OfferId,
+                                    Name = shopDiscount.Name,
+                                    Reduction = shopDiscount.Reduction
+                                };
+                                await clientDbContext.Discounts.AddAsync((DbContexts.MainContext.Discount)dbDiscount);
+                            }
                         }
                         foreach(var code in shopCodes)
                         {
                             DbContexts.MainContext.Code newCode = new()
                             {
                                 CodeId = code.CodeId,
-                                OfferId = offerID,
-                                DiscId = newDiscount?.DiscId,
+                                OfferId = dbOffer.OfferId,
+                                DiscId = dbDiscount?.DiscId,
                                 Expiry = code.Expiry
                             };
                             await clientDbContext.Codes.AddAsync(newCode);                        
