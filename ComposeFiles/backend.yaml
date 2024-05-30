@@ -1,0 +1,12 @@
+services:
+  backend:
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Compose
+    build: ../.
+    networks:
+      - loj-backend-network
+    volumes:
+      - backend-logs:/app/Logs
+      - backend-images:/app/Images

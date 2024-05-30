@@ -23,7 +23,8 @@
       "launchBrowser": true,
       "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/swagger",
       "environmentVariables": {
-        "ASPNETCORE_HTTP_PORTS": "8080"
+        "ASPNETCORE_HTTP_PORTS": "8080",
+        "ASPNETCORE_ENVIRONMENT": "Compose"
       },
       "publishAllPorts": true,
       "DockerfileRunArguments": "--network=loj-backend-network --rm"

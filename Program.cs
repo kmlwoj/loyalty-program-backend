@@ -143,7 +143,7 @@ builder.Services.AddSingleton<IConfiguration>(builder.Configuration);
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || new[] { "Compose", "Kubernetes" }.Contains(app.Environment.EnvironmentName))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
