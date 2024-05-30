@@ -12,21 +12,18 @@ To launch this project you will need:
 - Docker
 
 ## Getting started
-In order to run the project you will first need to launch MySQL database in Docker container.
-To do that launch `mysqlStartup.bat` file in the main directory.
-After that you will have to fill connection string in the `appsettings.json` for the desired docker location.
-Example format for local Docker run with Web API launched in IIS Express:
-```
-"ConnectionStrings": {
-    "MainConn": "server=localhost;database=LojClientDB;user=root;password=db_user_pass",
-    "ShopConn": "server=localhost;database=LojShopDB;user=root;password=db_user_pass"
-  },
-```
-Example format for local Docker run with Web API launched in Docker container:
-```
-"ConnectionStrings": {
-    "MainConn": "server=mysql;database=LojClientDB;user=root;password=db_user_pass",
-    "ShopConn": "server=mysql;database=LojShopDB;user=root;password=db_user_pass"
-  },
-```
-With all of the configuration done the API should work by launching it in the Visual Studio by IIS Express or Docker container with Dockerfile definition.
+There are several ways to launch this project:
+### Docker Compose
+First launch Docker and then run `composeStartup.bat` to startup the database and backend service.
+After that the backend will be available on [http://localhost:8080/swagger](http://localhost:8080/swagger) 
+and mysql database on [http://localhost:3306](http://localhost:3306).
+
+### IIS Express
+First launch Docker and then run `mysqlStartup.bat` to startup the database.
+It will create volume named mysql-vol. If any changes are made to the scripts in Scripts directory then this volume will have to be manually removed.
+After that launch project with default IIS Express run configuration. It will pass environment variable "Development".
+
+### Docker
+First launch Docker and then run `mysqlStartup.bat` to startup the database.
+It will create volume named mysql-vol. If any changes are made to the scripts in Scripts directory then this volume will have to be manually removed.
+After that launch project from the Dockerfile with environment variable `"ASPNETCORE_ENVIRONMENT": "Compose"` and docker argument `--network=loj-backend-network --rm`.
