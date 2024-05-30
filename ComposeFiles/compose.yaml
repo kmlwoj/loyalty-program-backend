@@ -1,0 +1,13 @@
+include:
+  - database.yaml
+  - backend.yaml
+volumes:
+  db-data:
+    driver: local
+  backend-logs:
+    driver: local
+  backend-images:
+    driver: local
+networks:
+  loj-backend-network:
+    driver: bridge
