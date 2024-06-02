@@ -231,7 +231,7 @@ namespace lojalBackend.Controllers
                         {
                             dbOffer = new()
                             {
-                                OfferId = await clientDbContext.Offers.CountAsync() + 1,
+                                OfferId = await clientDbContext.Offers.MaxAsync(x => x.OfferId) + 1,
                                 Name = shopOffer.Name,
                                 Price = shopOffer.Price,
                                 Organization = shopOffer.Organization,
@@ -252,7 +252,7 @@ namespace lojalBackend.Controllers
                             {
                                 dbDiscount = new()
                                 {
-                                    DiscId = await clientDbContext.Discounts.CountAsync() + 1,
+                                    DiscId = await clientDbContext.Discounts.MaxAsync(x => x.DiscId) + 1,
                                     OfferId = dbOffer.OfferId,
                                     Name = shopDiscount.Name,
                                     Reduction = shopDiscount.Reduction
