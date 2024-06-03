@@ -1,4 +1,4 @@
-﻿namespace DydaktykaBackend.Models
+﻿namespace lojalBackend.Models
 {
     public class TokenModel
     {

@@ -1,6 +1,4 @@
-﻿using DydaktykaBackend.Models;
-
-namespace lojalBackend.Models
+﻿namespace lojalBackend.Models
 {
     public class UserDbModelOrg : UserDbModel
     {

@@ -1,12 +1,9 @@
-﻿using DocumentFormat.OpenXml.Vml.Office;
-using lojalBackend.DbContexts.MainContext;
+﻿using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Runtime.CompilerServices;
 using static lojalBackend.ImageManager;
 
 namespace lojalBackend.Controllers

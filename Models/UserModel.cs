@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 
-namespace DydaktykaBackend.Models
+namespace lojalBackend.Models
 {
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum AccountTypes

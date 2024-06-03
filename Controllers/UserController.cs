@@ -1,9 +1,7 @@
-﻿using DydaktykaBackend.Models;
-using lojalBackend.DbContexts.MainContext;
+﻿using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
 using lojalBackend.Models;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace lojalBackend.Controllers
