@@ -1,10 +1,6 @@
 ﻿using lojalBackend.DbContexts.MainContext;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using System.Text;
 
 namespace lojalBackend
 {

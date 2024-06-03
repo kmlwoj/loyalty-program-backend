@@ -1,7 +1,7 @@
-using Irony.Parsing;
 using lojalBackend.Controllers;
 using lojalBackend.DbContexts.MainContext;
 using lojalBackend.DbContexts.ShopContext;
+using lojalBackend.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
@@ -90,7 +90,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                     {
                         var dbContext = context.HttpContext.RequestServices.GetRequiredService<LojClientDbContext>();
                         context.Token = LoginController.RefreshToken(
-                            new DydaktykaBackend.Models.TokenModel(context.Request.Cookies["X-Access-Token"] ?? string.Empty, context.Request.Cookies["X-Refresh-Token"] ?? string.Empty),
+                            new TokenModel(context.Request.Cookies["X-Access-Token"] ?? string.Empty, context.Request.Cookies["X-Refresh-Token"] ?? string.Empty),
                             builder.Configuration["Jwt:Key"] ?? string.Empty,
                             builder.Configuration["Jwt:Issuer"] ?? string.Empty,
                             builder.Configuration["Jwt:Audience"] ?? string.Empty,
