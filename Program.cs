@@ -24,7 +24,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy(name: "DefaultCors",
         policy =>
         {
-            policy.WithOrigins(new[] { "http://localhost:3000" })
+            policy.WithOrigins(new[] { "http://localhost:3000", "https://lojfr.ne-quid-nimis.pl", "http://lojfr.ne-quid-nimis.pl" })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
