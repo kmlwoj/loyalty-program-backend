@@ -35,17 +35,17 @@ namespace lojalBackend.Controllers
         public async Task<IActionResult> GetShops([FromQuery] string? category)
         {
             List<ShopModel> answer = new();
-            List<DbContexts.MainContext.Organization> shops;
+            List<DbContexts.ShopContext.Organization> shops;
             if (category == null)
             {
-                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop))).ToListAsync();
+                shops = await shopDbContext.Organizations.ToListAsync();
             }
             else
             {
                 if (!await clientDbContext.Categories.AnyAsync(x => x.Name.Equals(category)))
                     return NotFound("Given category not found in the system!");
 
-                shops = await clientDbContext.Organizations.Where(x => x.Type.Equals(Enum.GetName(typeof(OrgTypes), OrgTypes.Shop)) && x.Offers.Any(y => category.Equals(y.Category))).ToListAsync();
+                shops = await shopDbContext.Organizations.Where(x => x.Offers.Any(y => category.Equals(y.Category))).ToListAsync();
             }
             foreach (var entry in shops)
             {
