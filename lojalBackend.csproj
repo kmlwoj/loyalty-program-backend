@@ -42,4 +42,33 @@
     <Folder Include="Logs\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="rest_api_testing_project\**" />
+    <Compile Remove="lojalBackend.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="rest_api_testing_project\**" />
+    <EmbeddedResource Remove="lojalBackend.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="rest_api_testing_project\**" />
+    <Content Remove="lojalBackend.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="rest_api_testing_project\**" />
+    <None Remove="lojalBackend.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="rest_api_testing_project\obj\project.assets.json" />
+    <_ContentIncludedByDefault Remove="rest_api_testing_project\obj\project.packagespec.json" />
+    <_ContentIncludedByDefault Remove="rest_api_testing_project\obj\rest_api_testing_project.csproj.nuget.dgspec.json" />
+    <_ContentIncludedByDefault Remove="lojalBackend.Tests\obj\lojalBackend.Tests.csproj.nuget.dgspec.json" />
+    <_ContentIncludedByDefault Remove="lojalBackend.Tests\obj\project.assets.json" />
+    <_ContentIncludedByDefault Remove="lojalBackend.Tests\obj\project.packagespec.json" />
+  </ItemGroup>
+
 </Project>
